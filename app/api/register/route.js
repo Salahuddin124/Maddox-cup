@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { getDb } from "../../../lib/db";
+import { ensureSchema, getPool } from "../../../lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,10 +20,10 @@ const ROLE_VALUES = new Set([
 const PLAYER_COLUMNS = `
   slot AS id,
   in_game_name AS ign,
-  steam_id AS steamId,
+  steam_id AS "steamId",
   role,
-  current_mmr AS currentMmr,
-  peak_mmr AS peakMmr,
+  current_mmr AS "currentMmr",
+  peak_mmr AS "peakMmr",
   discord_url AS discord
 `;
 
@@ -198,15 +198,15 @@ function validateRegistration(payload) {
   return { data: { teamName, players } };
 }
 
-function createReference(db) {
-  const findReference = db.prepare(
-    "SELECT 1 AS found FROM teams WHERE reference = ?",
-  );
-
+async function createReference(client) {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const reference = `MC-${randomBytes(5).toString("hex").toUpperCase()}`;
+    const existing = await client.query(
+      "SELECT 1 AS found FROM teams WHERE reference = $1",
+      [reference],
+    );
 
-    if (!findReference.get(reference)) {
+    if (existing.rowCount === 0) {
       return reference;
     }
   }
@@ -214,109 +214,128 @@ function createReference(db) {
   throw new Error("Could not generate a unique registration reference.");
 }
 
-function loadRegistration(db, tokenHash) {
-  const team = db
-    .prepare(
-      `
-        SELECT
-          id,
-          reference,
-          team_name AS teamName,
-          created_at AS createdAt
-        FROM teams
-        WHERE browser_token_hash = ?
-      `,
-    )
-    .get(tokenHash);
+async function loadRegistration(pool, tokenHash) {
+  const teamResult = await pool.query(
+    `
+      SELECT
+        id,
+        reference,
+        team_name AS "teamName",
+        created_at AS "createdAt"
+      FROM teams
+      WHERE browser_token_hash = $1
+    `,
+    [tokenHash],
+  );
 
-  if (!team) return null;
+  if (teamResult.rowCount === 0) return null;
 
-  const players = db
-    .prepare(
-      `
-        SELECT ${PLAYER_COLUMNS}
-        FROM players
-        WHERE team_id = ?
-        ORDER BY slot ASC
-      `,
-    )
-    .all(team.id);
+  const team = teamResult.rows[0];
+  const playersResult = await pool.query(
+    `
+      SELECT ${PLAYER_COLUMNS}
+      FROM players
+      WHERE team_id = $1
+      ORDER BY slot ASC
+    `,
+    [team.id],
+  );
 
   return {
     id: team.id,
     reference: team.reference,
     teamName: team.teamName,
     createdAt: team.createdAt,
-    players,
+    players: playersResult.rows,
   };
 }
 
-function saveRegistration(db, tokenHash, teamName, players) {
-  const findTeam = db.prepare(
-    "SELECT id, reference FROM teams WHERE browser_token_hash = ?",
-  );
-  const insertTeam = db.prepare(`
-    INSERT INTO teams (reference, tournament, team_name, browser_token_hash)
-    VALUES (?, ?, ?, ?)
-  `);
-  const updateTeam = db.prepare(
-    "UPDATE teams SET team_name = ? WHERE id = ?",
-  );
-  const deletePlayers = db.prepare("DELETE FROM players WHERE team_id = ?");
-  const insertPlayer = db.prepare(`
-    INSERT INTO players (
-      team_id,
-      slot,
-      in_game_name,
-      steam_id,
-      role,
-      current_mmr,
-      peak_mmr,
-      discord_url
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `);
+async function saveRegistration(pool, tokenHash, teamName, players) {
+  const client = await pool.connect();
 
-  const transaction = db.transaction(() => {
-    const existing = findTeam.get(tokenHash);
+  try {
+    await client.query("BEGIN");
+
+    const existingResult = await client.query(
+      `
+        SELECT id, reference
+        FROM teams
+        WHERE browser_token_hash = $1
+        FOR UPDATE
+      `,
+      [tokenHash],
+    );
+
     let teamId;
     let reference;
     let updated = false;
 
-    if (existing) {
-      teamId = existing.id;
-      reference = existing.reference;
+    if (existingResult.rowCount > 0) {
+      teamId = existingResult.rows[0].id;
+      reference = existingResult.rows[0].reference;
       updated = true;
 
-      updateTeam.run(teamName, teamId);
-      deletePlayers.run(teamId);
-    } else {
-      reference = createReference(db);
-      const teamResult = insertTeam.run(
-        reference,
-        TOURNAMENT,
+      await client.query("UPDATE teams SET team_name = $1 WHERE id = $2", [
         teamName,
-        tokenHash,
+        teamId,
+      ]);
+      await client.query("DELETE FROM players WHERE team_id = $1", [teamId]);
+    } else {
+      reference = await createReference(client);
+      const teamResult = await client.query(
+        `
+          INSERT INTO teams (reference, tournament, team_name, browser_token_hash)
+          VALUES ($1, $2, $3, $4)
+          RETURNING id
+        `,
+        [reference, TOURNAMENT, teamName, tokenHash],
       );
-      teamId = Number(teamResult.lastInsertRowid);
+      teamId = teamResult.rows[0].id;
     }
 
-    players.forEach((player, index) => {
-      insertPlayer.run(
-        teamId,
-        index + 1,
-        player.ign,
-        player.steamId,
-        player.role,
-        player.currentMmr,
-        player.peakMmr,
-        player.discord,
+    for (let index = 0; index < players.length; index += 1) {
+      const player = players[index];
+
+      await client.query(
+        `
+          INSERT INTO players (
+            team_id,
+            slot,
+            in_game_name,
+            steam_id,
+            role,
+            current_mmr,
+            peak_mmr,
+            discord_url
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `,
+        [
+          teamId,
+          index + 1,
+          player.ign,
+          player.steamId,
+          player.role,
+          player.currentMmr,
+          player.peakMmr,
+          player.discord,
+        ],
       );
-    });
+    }
+
+    await client.query("COMMIT");
 
     return { teamId, reference, updated };
-  });
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      // Nothing left to roll back.
+    }
 
-  return transaction();
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function GET(request) {
@@ -327,8 +346,10 @@ export async function GET(request) {
   }
 
   try {
-    const registration = loadRegistration(
-      getDb(),
+    await ensureSchema();
+
+    const registration = await loadRegistration(
+      getPool(),
       hashBrowserToken(browserToken),
     );
 
@@ -371,17 +392,23 @@ export async function POST(request) {
   const tokenHash = hashBrowserToken(browserToken);
 
   try {
-    const db = getDb();
+    await ensureSchema();
+
+    const pool = getPool();
     let saved;
 
-    try {
-      saved = saveRegistration(db, tokenHash, teamName, players);
-    } catch (error) {
-      // Two tabs can race on their very first submission. The unique index on
-      // browser_token_hash lets the loser fall back to updating the same team.
-      if (String(error?.code ?? "").startsWith("SQLITE_CONSTRAINT")) {
-        saved = saveRegistration(db, tokenHash, teamName, players);
-      } else {
+    // Two tabs can race on their very first submission. The unique index on
+    // browser_token_hash makes one insert fail; retrying then updates the team
+    // that the other request just created.
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        saved = await saveRegistration(pool, tokenHash, teamName, players);
+        break;
+      } catch (error) {
+        if (error?.code === "23505" && attempt < 2) {
+          continue;
+        }
+
         throw error;
       }
     }

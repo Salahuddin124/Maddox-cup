@@ -3,15 +3,26 @@
 Dota 2 tournament registration for **MADDOXX CUP**, built with Next.js. The entire
 registration interface lives in `app/App.jsx` as a single client component with
 its CSS in a `<style>` tag, as requested. Submissions are validated again on the
-server and saved to a local SQLite database.
+server and saved to a Neon Postgres database.
 
 ## Run locally
 
-Requires Node.js 22 or newer (the SQLite driver targets Node 22+).
+Requires Node.js 22 or newer.
 
 ```bash
 npm install
+neon env pull --service postgres
 npm run dev
+```
+
+`neon env pull` writes `DATABASE_URL` to `.env.local`. If you have not linked a
+project yet:
+
+```bash
+neon login
+neon init -y --org-id <org-id> --project-id <project-id> \
+  --branch production --services postgres
+neon env pull --service postgres
 ```
 
 Open `http://localhost:3000`.
@@ -40,65 +51,51 @@ const PREFILL_DEMO_DATA = true;
 
 ## Database
 
-SQLite is used through `better-sqlite3`. The database is created automatically
-the first time it is needed at:
-
-```
-data/maddoxx-cup.db
-```
-
-Set `MADDOXX_DB_PATH` to use a different file:
+Submissions are stored in **Neon Postgres**. The app connects with the `pg`
+driver using `DATABASE_URL`:
 
 ```bash
-MADDOXX_DB_PATH=/absolute/path/to/maddoxx-cup.db npm run dev
+# .env.local
+DATABASE_URL=postgresql://user:password@host/db?sslmode=require
 ```
 
-## Deploying to Vercel
-
-When `process.env.VERCEL` is set, `lib/db.js` writes the database to
-`/tmp/maddoxx-cup.db`. Vercel's deployment filesystem is read-only, so this is
-the only writable location without extra services.
-
-Important: `/tmp` is **ephemeral and per function instance**. It is fine for UI
-and flow testing, but submissions are not durable — they can disappear when the
-instance recycles, and separate instances do not share the same file. For real
-persistence, point `MADDOXX_DB_PATH` at persistent storage or replace
-`better-sqlite3` with a hosted database such as Postgres, Turso, or Supabase.
-`npm run submissions` only works against a local database file.
-
-To deploy: import the GitHub repository in Vercel, keep the detected framework
-preset as Next.js, use Node.js 22 or newer, and deploy. No environment variables
-are required for the ephemeral `/tmp` setup.
+The `teams` and `players` tables are created automatically the first time the
+API is used, so no manual migration step is required. Use the pooled connection
+string for the deployed app.
 
 ## Viewing submissions
 
-Fastest option — a readable table in the terminal:
+A readable table in the terminal:
 
 ```bash
 npm run submissions
 ```
 
-This prints every team with its reference, timestamp, and five-player roster.
+This prints every team with its reference, timestamp, and five-player roster. It
+reads `DATABASE_URL` from `.env.local` (or `.env`).
 
-You can also open the database with any SQLite tool, such as
-[DB Browser for SQLite](https://sqlitebrowser.org/), and browse the `teams` and
-`players` tables. The file is a normal SQLite database, so the `sqlite3` CLI
-works too:
+You can also use the **Neon Console → SQL Editor**, or connect with `psql`:
 
 ```bash
-sqlite3 data/maddoxx-cup.db \
-  "SELECT t.id, t.reference, t.team_name, t.created_at, COUNT(p.id) AS player_count
-   FROM teams t LEFT JOIN players p ON p.team_id = t.id
-   GROUP BY t.id ORDER BY t.id DESC;"
+neon psql production
+```
+
+```sql
+SELECT t.id, t.reference, t.team_name, t.created_at, COUNT(p.id) AS player_count
+FROM teams t
+LEFT JOIN players p ON p.team_id = t.id
+GROUP BY t.id
+ORDER BY t.id DESC;
 ```
 
 Roster for a specific team:
 
-```bash
-sqlite3 -header -column data/maddoxx-cup.db \
-  "SELECT p.slot, p.in_game_name, p.role, p.current_mmr, p.peak_mmr,
-          p.steam_id, p.discord_url
-   FROM players p WHERE p.team_id = 1 ORDER BY p.slot;"
+```sql
+SELECT p.slot, p.in_game_name, p.role, p.current_mmr, p.peak_mmr,
+       p.steam_id, p.discord_url
+FROM players p
+WHERE p.team_id = 1
+ORDER BY p.slot;
 ```
 
 ## One registration per browser
@@ -110,10 +107,10 @@ stored in `teams.browser_token_hash`, which has a unique index.
 - On page load the client calls `GET /api/register`. If the cookie maps to a
   saved team, the success screen is shown instead of the form.
 - If that browser submits again through “Edit roster”, the existing row and its
-  five players are updated in place. The reference stays the same and a second
-  team is never inserted.
+  five players are updated in place in one transaction. The reference stays the
+  same and a second team is never inserted.
 - The unique index also prevents a duplicate row if two tabs submit at the same
-  time; the losing request falls back to an update.
+  time; the losing request retries and updates the same team.
 - Identity is per browser profile. Clearing cookies, using private browsing, or
   using a different browser will look like a new registration. Preventing that
   requires user accounts, which this project intentionally does not have.
@@ -122,28 +119,28 @@ stored in `teams.browser_token_hash`, which has a unique index.
 
 `teams`
 
-| Column               | Type    | Notes                                              |
-| -------------------- | ------- | -------------------------------------------------- |
-| `id`                 | INTEGER | Primary key                                        |
-| `reference`          | TEXT    | Unique public registration code                    |
-| `tournament`         | TEXT    | Tournament name                                    |
-| `team_name`          | TEXT    | Registered team name                               |
-| `browser_token_hash` | TEXT    | SHA-256 of the browser cookie; unique when present |
-| `created_at`         | TEXT    | UTC timestamp                                      |
+| Column               | Type        | Notes                                              |
+| -------------------- | ----------- | -------------------------------------------------- |
+| `id`                 | INTEGER     | Primary key, generated identity                    |
+| `reference`          | TEXT        | Unique public registration code                    |
+| `tournament`         | TEXT        | Tournament name                                    |
+| `team_name`          | TEXT        | Registered team name                               |
+| `browser_token_hash` | TEXT        | SHA-256 of the browser cookie; unique when present |
+| `created_at`         | TIMESTAMPTZ | Creation time, defaults to `now()`                 |
 
 `players`
 
-| Column         | Type    | Notes                                      |
-| -------------- | ------- | ------------------------------------------ |
-| `id`           | INTEGER | Primary key                                |
-| `team_id`      | INTEGER | Foreign key to `teams.id` (cascade delete) |
-| `slot`         | INTEGER | Player number, 1–5                         |
-| `in_game_name` | TEXT    | In-game name                               |
-| `steam_id`     | TEXT    | Steam ID or friend ID                      |
-| `role`         | TEXT    | One of the five tournament roles           |
-| `current_mmr`  | INTEGER | 0 or more                                  |
-| `peak_mmr`     | INTEGER | 0 or more, never below current MMR         |
-| `discord_url`  | TEXT    | Discord profile link                       |
+| Column         | Type        | Notes                                      |
+| -------------- | ----------- | ------------------------------------------ |
+| `id`           | INTEGER     | Primary key, generated identity            |
+| `team_id`      | INTEGER     | Foreign key to `teams.id` (cascade delete) |
+| `slot`         | INTEGER     | Player number, 1–5                         |
+| `in_game_name` | TEXT        | In-game name                               |
+| `steam_id`     | TEXT        | Steam ID or friend ID                      |
+| `role`         | TEXT        | One of the five tournament roles           |
+| `current_mmr`  | INTEGER     | 0 or more                                  |
+| `peak_mmr`     | INTEGER     | 0 or more, never below current MMR         |
+| `discord_url`  | TEXT        | Discord profile link                       |
 
 ## API
 
@@ -211,10 +208,21 @@ the UI can restore the success screen on reload:
 
 Without a cookie, `GET` returns `{ "ok": true, "registered": false }`.
 
+## Deploying to Vercel
+
+1. Import the GitHub repository in Vercel and keep the Next.js preset.
+2. Add `DATABASE_URL` to the project's environment variables — use the pooled
+   connection string from the Neon Console (or connect the project through the
+   Neon integration, which sets it automatically).
+3. Deploy.
+
+Registrations are stored in Neon, so they survive deployments and are shared
+across all function instances.
+
 ## Notes
 
-- SQLite data lives on the local filesystem. For a serverless host, attach
-  persistent storage or swap the database layer for a hosted database.
+- `DATABASE_URL` is required in production. Without it the API returns `500` and
+  logs a clear error instead of losing submissions.
 - The client still logs the `{ tournament, teamName, players }` payload to the
   console and only shows the success screen after the database write succeeds.
 - Client and server both validate the roster. Duplicate roles produce a warning

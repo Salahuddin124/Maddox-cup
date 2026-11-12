@@ -34,7 +34,7 @@ const EMPTY_PLAYERS = Array.from({ length: 5 }, (_, index) => ({
 
 // Demo prefill so the deployed form can be tested without typing 31 fields.
 // Set this to false before collecting real registrations.
-const PREFILL_DEMO_DATA = true;
+const PREFILL_DEMO_DATA = false;
 
 const DEMO_TEAM_NAME = "MADDOXX Test Squad";
 

@@ -909,13 +909,13 @@ export default function App() {
                                 className="field-label"
                                 htmlFor={`player-${player.id}-discord`}
                               >
-                                Discord profile link{" "}
+                                Discord username or ID{" "}
                                 <span className="required">*</span>
                               </label>
                               <input
                                 id={`player-${player.id}-discord`}
                                 className="input"
-                                type="url"
+                                type="text"
                                 value={player.discord}
                                 onChange={(event) =>
                                   updatePlayer(
@@ -924,8 +924,8 @@ export default function App() {
                                     event.target.value,
                                   )
                                 }
-                                placeholder="https://discord.com/users/..."
-                                autoComplete="url"
+                                placeholder="e.g. maddoxx or 123456789012345678"
+                                autoComplete="off"
                                 maxLength={200}
                                 required
                               />

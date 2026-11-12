@@ -140,7 +140,7 @@ stored in `teams.browser_token_hash`, which has a unique index.
 | `role`         | TEXT        | One of the five tournament roles           |
 | `current_mmr`  | INTEGER     | 0 or more                                  |
 | `peak_mmr`     | INTEGER     | 0 or more, never below current MMR         |
-| `discord_url`  | TEXT        | Discord profile link                       |
+| `discord_url`  | TEXT        | Discord username, ID, or profile link      |
 
 ## API
 
@@ -158,7 +158,7 @@ stored in `teams.browser_token_hash`, which has a unique index.
       "role": "carry",
       "currentMmr": 6200,
       "peakMmr": 7100,
-      "discord": "https://discord.com/users/123456789"
+      "discord": "maddoxx"
     }
   ]
 }
@@ -199,7 +199,7 @@ the UI can restore the success screen on reload:
         "role": "carry",
         "currentMmr": 6200,
         "peakMmr": 7100,
-        "discord": "https://discord.com/users/123456789"
+        "discord": "maddoxx"
       }
     ]
   }

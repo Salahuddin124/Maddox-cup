@@ -164,24 +164,11 @@ function validateRegistration(payload) {
 
     const discord = readText(player.discord);
     if (!discord) {
-      return { error: `${label}: Discord profile link is required.` };
+      return { error: `${label}: Discord username or ID is required.` };
     }
     if (discord.length > 200) {
       return {
-        error: `${label}: Discord profile link must be 200 characters or fewer.`,
-      };
-    }
-
-    let discordUrl;
-    try {
-      discordUrl = new URL(discord);
-    } catch {
-      return { error: `${label}: enter a valid Discord profile link.` };
-    }
-
-    if (discordUrl.protocol !== "https:" && discordUrl.protocol !== "http:") {
-      return {
-        error: `${label}: Discord profile link must start with http:// or https://.`,
+        error: `${label}: Discord username or ID must be 200 characters or fewer.`,
       };
     }
 

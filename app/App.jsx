@@ -32,6 +32,63 @@ const EMPTY_PLAYERS = Array.from({ length: 5 }, (_, index) => ({
   discord: "",
 }));
 
+// Demo prefill so the deployed form can be tested without typing 31 fields.
+// Set this to false before collecting real registrations.
+const PREFILL_DEMO_DATA = true;
+
+const DEMO_TEAM_NAME = "MADDOXX Test Squad";
+
+const DEMO_PLAYERS = [
+  {
+    id: 1,
+    ign: "Salahuddin",
+    steamId: "76561198000000001",
+    role: "carry",
+    currentMmr: "6840",
+    peakMmr: "7520",
+    discord: "https://discord.com/users/123456789012345671",
+  },
+  {
+    id: 2,
+    ign: "Midnight",
+    steamId: "76561198000000002",
+    role: "midlaner",
+    currentMmr: "7210",
+    peakMmr: "8030",
+    discord: "https://discord.com/users/123456789012345672",
+  },
+  {
+    id: 3,
+    ign: "Stonewall",
+    steamId: "76561198000000003",
+    role: "offlaner",
+    currentMmr: "5980",
+    peakMmr: "6640",
+    discord: "https://discord.com/users/123456789012345673",
+  },
+  {
+    id: 4,
+    ign: "WardBot",
+    steamId: "76561198000000004",
+    role: "soft-support",
+    currentMmr: "5120",
+    peakMmr: "5870",
+    discord: "https://discord.com/users/123456789012345674",
+  },
+  {
+    id: 5,
+    ign: "Guardian",
+    steamId: "76561198000000005",
+    role: "hard-support",
+    currentMmr: "4310",
+    peakMmr: "4990",
+    discord: "https://discord.com/users/123456789012345675",
+  },
+];
+
+const INITIAL_TEAM_NAME = PREFILL_DEMO_DATA ? DEMO_TEAM_NAME : "";
+const INITIAL_PLAYERS = PREFILL_DEMO_DATA ? DEMO_PLAYERS : EMPTY_PLAYERS;
+
 function hasValue(value) {
   return String(value ?? "").trim() !== "";
 }
@@ -89,9 +146,9 @@ function Caret() {
 }
 
 export default function App() {
-  const [teamName, setTeamName] = useState("");
+  const [teamName, setTeamName] = useState(INITIAL_TEAM_NAME);
   const [players, setPlayers] = useState(() =>
-    EMPTY_PLAYERS.map((player) => ({ ...player })),
+    INITIAL_PLAYERS.map((player) => ({ ...player })),
   );
   const [submittedData, setSubmittedData] = useState(null);
   const [hasSubmittedOnce, setHasSubmittedOnce] = useState(false);

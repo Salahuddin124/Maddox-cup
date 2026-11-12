@@ -23,6 +23,21 @@ npm run build
 npm start
 ```
 
+## Demo prefill
+
+For quick testing, the form starts with a complete sample roster. The flag is in
+`app/App.jsx`:
+
+```js
+const PREFILL_DEMO_DATA = true;
+```
+
+- Set it to `false` before collecting real registrations.
+- The prefilled roster has all 31 fields filled, five unique roles, valid MMR
+  values, and placeholder Steam/Discord links.
+- You can edit any field before submitting. After submitting, “Edit roster”
+  returns the edited values.
+
 ## Database
 
 SQLite is used through `better-sqlite3`. The database is created automatically
@@ -37,6 +52,23 @@ Set `MADDOXX_DB_PATH` to use a different file:
 ```bash
 MADDOXX_DB_PATH=/absolute/path/to/maddoxx-cup.db npm run dev
 ```
+
+## Deploying to Vercel
+
+When `process.env.VERCEL` is set, `lib/db.js` writes the database to
+`/tmp/maddoxx-cup.db`. Vercel's deployment filesystem is read-only, so this is
+the only writable location without extra services.
+
+Important: `/tmp` is **ephemeral and per function instance**. It is fine for UI
+and flow testing, but submissions are not durable — they can disappear when the
+instance recycles, and separate instances do not share the same file. For real
+persistence, point `MADDOXX_DB_PATH` at persistent storage or replace
+`better-sqlite3` with a hosted database such as Postgres, Turso, or Supabase.
+`npm run submissions` only works against a local database file.
+
+To deploy: import the GitHub repository in Vercel, keep the detected framework
+preset as Next.js, use Node.js 22 or newer, and deploy. No environment variables
+are required for the ephemeral `/tmp` setup.
 
 ## Viewing submissions
 

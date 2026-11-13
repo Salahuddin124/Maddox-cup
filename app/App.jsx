@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 const TOURNAMENT = "MADDOXX CUP";
 const TITLE = "MADDOXX CUP";
 const SUBTITLE = "Five players. One bracket. Register your squad.";
-const TOTAL_FIELDS = 31;
+const TOTAL_FIELDS = 32;
 
 const ROLES = [
   { value: "carry", label: "Carry (Pos 1)" },
@@ -26,6 +26,7 @@ const EMPTY_PLAYERS = Array.from({ length: 5 }, (_, index) => ({
   id: index + 1,
   ign: "",
   steamId: "",
+  phone: "",
   role: "",
   currentMmr: "",
   peakMmr: "",
@@ -43,6 +44,7 @@ const DEMO_PLAYERS = [
     id: 1,
     ign: "Salahuddin",
     steamId: "76561198000000001",
+    phone: "+1 555 010 0001",
     role: "carry",
     currentMmr: "6840",
     peakMmr: "7520",
@@ -97,14 +99,42 @@ function isValidMmr(value) {
   return hasValue(value) && Number.isFinite(Number(value)) && Number(value) >= 0;
 }
 
+function isValidSteamId(value) {
+  const text = String(value ?? "").trim();
+
+  if (!text) return false;
+
+  // SteamID64, friend code, or account ID.
+  if (/^\d{1,20}$/.test(text)) return true;
+
+  // Profile link with or without the protocol, e.g.
+  // steamcommunity.com/id/name or https://s.team/p/abc
+  return /^(https?:\/\/)?(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(
+    text,
+  );
+}
+
+function isValidPhone(value) {
+  const text = String(value ?? "").trim();
+
+  if (!text) return false;
+
+  const digits = text.replace(/\D/g, "");
+
+  return (
+    /^[+\d][\d\s().-]*$/.test(text) && digits.length >= 7 && digits.length <= 15
+  );
+}
+
 function isPlayerComplete(player) {
   return (
     hasValue(player.ign) &&
-    hasValue(player.steamId) &&
+    isValidSteamId(player.steamId) &&
     hasValue(player.role) &&
     isValidMmr(player.currentMmr) &&
     isValidMmr(player.peakMmr) &&
-    hasValue(player.discord)
+    hasValue(player.discord) &&
+    (player.id !== 1 || isValidPhone(player.phone))
   );
 }
 
@@ -129,6 +159,7 @@ function playersFromRegistration(registration) {
       id: emptyPlayer.id,
       ign: typeof saved.ign === "string" ? saved.ign : "",
       steamId: typeof saved.steamId === "string" ? saved.steamId : "",
+      phone: typeof saved.phone === "string" ? saved.phone : "",
       role: saved.role && ROLE_LABELS[saved.role] ? saved.role : "",
       currentMmr:
         currentMmr === undefined || currentMmr === null
@@ -357,11 +388,12 @@ export default function App() {
     players.reduce((total, player) => {
       let count = 0;
       if (hasValue(player.ign)) count += 1;
-      if (hasValue(player.steamId)) count += 1;
+      if (isValidSteamId(player.steamId)) count += 1;
       if (hasValue(player.role)) count += 1;
       if (isValidMmr(player.currentMmr)) count += 1;
       if (isValidMmr(player.peakMmr)) count += 1;
       if (hasValue(player.discord)) count += 1;
+      if (player.id === 1 && isValidPhone(player.phone)) count += 1;
       return total + count;
     }, 0);
 
@@ -381,6 +413,18 @@ export default function App() {
     }
   });
   const hasMmrError = Object.keys(mmrErrors).length > 0;
+
+  const steamErrors = {};
+  players.forEach((player) => {
+    if (hasValue(player.steamId) && !isValidSteamId(player.steamId)) {
+      steamErrors[player.id] = true;
+    }
+  });
+  const hasSteamError = Object.keys(steamErrors).length > 0;
+
+  const phoneError =
+    hasValue(players[0]?.phone) && !isValidPhone(players[0]?.phone);
+  const hasPhoneError = Boolean(phoneError);
 
   const roleCounts = players.reduce((counts, player) => {
     if (player.role) {
@@ -413,7 +457,7 @@ export default function App() {
 
     if (submittingRef.current) return;
 
-    if (hasMmrError) return;
+    if (hasMmrError || hasSteamError || hasPhoneError) return;
 
     if (!formComplete) {
       setSubmitError("Please complete every field before registering.");
@@ -427,6 +471,7 @@ export default function App() {
         id: player.id,
         ign: player.ign.trim(),
         steamId: player.steamId.trim(),
+        phone: player.phone?.trim() ?? "",
         role: player.role,
         currentMmr: Number(player.currentMmr),
         peakMmr: Number(player.peakMmr),
@@ -768,6 +813,7 @@ export default function App() {
                   {players.map((player) => {
                     const complete = isPlayerComplete(player);
                     const mmrError = Boolean(mmrErrors[player.id]);
+                    const steamError = Boolean(steamErrors[player.id]);
 
                     return (
                       <section
@@ -802,7 +848,9 @@ export default function App() {
                               className="card-title"
                               id={`player-${player.id}-title`}
                             >
-                              Player {player.id}
+                              {player.id === 1
+                                ? "Captain"
+                                : `Player ${player.id}`}
                             </h2>
                           </div>
                           <span
@@ -850,12 +898,14 @@ export default function App() {
                                 className="field-label"
                                 htmlFor={`player-${player.id}-steam`}
                               >
-                                Steam ID or friend ID{" "}
+                                Steam ID or profile link{" "}
                                 <span className="required">*</span>
                               </label>
                               <input
                                 id={`player-${player.id}-steam`}
-                                className="input"
+                                className={`input ${
+                                  steamError ? "is-invalid" : ""
+                                }`}
                                 type="text"
                                 value={player.steamId}
                                 onChange={(event) =>
@@ -865,12 +915,72 @@ export default function App() {
                                     event.target.value,
                                   )
                                 }
-                                placeholder="SteamID64 or friend code"
+                                placeholder="76561198000000000 or steamcommunity.com/id/name"
                                 autoComplete="off"
-                                maxLength={64}
+                                maxLength={200}
+                                aria-invalid={steamError}
+                                aria-describedby={
+                                  steamError
+                                    ? `player-${player.id}-steam-error`
+                                    : undefined
+                                }
                                 required
                               />
+                              {steamError ? (
+                                <p
+                                  className="field-error"
+                                  id={`player-${player.id}-steam-error`}
+                                >
+                                  Enter a Steam ID number or a profile link.
+                                </p>
+                              ) : null}
                             </div>
+
+                            {player.id === 1 ? (
+                              <div className="field">
+                                <label
+                                  className="field-label"
+                                  htmlFor={`player-${player.id}-phone`}
+                                >
+                                  Captain phone number{" "}
+                                  <span className="required">*</span>
+                                </label>
+                                <input
+                                  id={`player-${player.id}-phone`}
+                                  className={`input ${
+                                    phoneError ? "is-invalid" : ""
+                                  }`}
+                                  type="tel"
+                                  inputMode="tel"
+                                  value={player.phone ?? ""}
+                                  onChange={(event) =>
+                                    updatePlayer(
+                                      player.id,
+                                      "phone",
+                                      event.target.value,
+                                    )
+                                  }
+                                  placeholder="+1 555 010 0000"
+                                  autoComplete="tel"
+                                  maxLength={32}
+                                  aria-invalid={phoneError}
+                                  aria-describedby={
+                                    phoneError
+                                      ? `player-${player.id}-phone-error`
+                                      : undefined
+                                  }
+                                  required
+                                />
+                                {phoneError ? (
+                                  <p
+                                    className="field-error"
+                                    id={`player-${player.id}-phone-error`}
+                                  >
+                                    Enter a valid phone number.
+                                  </p>
+                                ) : null}
+                              </div>
+                            ) : null}
 
                             <div className="field">
                               <label

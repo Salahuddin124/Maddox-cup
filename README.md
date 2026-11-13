@@ -40,12 +40,13 @@ For quick testing, the form starts with a complete sample roster. The flag is in
 `app/App.jsx`:
 
 ```js
-const PREFILL_DEMO_DATA = true;
+const PREFILL_DEMO_DATA = false;
 ```
 
-- Set it to `false` before collecting real registrations.
-- The prefilled roster has all 31 fields filled, five unique roles, valid MMR
-  values, and placeholder Steam/Discord links.
+- The flag is `false` in the committed app so the form opens empty for real
+  registrations. Set it to `true` only for local testing.
+- The prefilled roster has all 32 fields filled, five unique roles, valid MMR
+  values, and placeholder Steam/Discord values.
 - You can edit any field before submitting. After submitting, “Edit roster”
   returns the edited values.
 
@@ -92,7 +93,7 @@ Roster for a specific team:
 
 ```sql
 SELECT p.slot, p.in_game_name, p.role, p.current_mmr, p.peak_mmr,
-       p.steam_id, p.discord_url
+       p.steam_id, p.phone, p.discord_url
 FROM players p
 WHERE p.team_id = 1
 ORDER BY p.slot;
@@ -134,9 +135,10 @@ stored in `teams.browser_token_hash`, which has a unique index.
 | -------------- | ----------- | ------------------------------------------ |
 | `id`           | INTEGER     | Primary key, generated identity            |
 | `team_id`      | INTEGER     | Foreign key to `teams.id` (cascade delete) |
-| `slot`         | INTEGER     | Player number, 1–5                         |
+| `slot`         | INTEGER     | Player number, 1–5 (slot 1 is the captain) |
 | `in_game_name` | TEXT        | In-game name                               |
-| `steam_id`     | TEXT        | Steam ID or friend ID                      |
+| `steam_id`     | TEXT        | Steam ID number or profile link            |
+| `phone`        | TEXT        | Captain's phone number (slot 1 only)       |
 | `role`         | TEXT        | One of the five tournament roles           |
 | `current_mmr`  | INTEGER     | 0 or more                                  |
 | `peak_mmr`     | INTEGER     | 0 or more, never below current MMR         |
@@ -155,6 +157,7 @@ stored in `teams.browser_token_hash`, which has a unique index.
       "id": 1,
       "ign": "Player name",
       "steamId": "76561198000000000",
+      "phone": "+1 555 010 0000",
       "role": "carry",
       "currentMmr": 6200,
       "peakMmr": 7100,
@@ -165,8 +168,11 @@ stored in `teams.browser_token_hash`, which has a unique index.
 ```
 
 The API requires exactly five players, validates every field, rejects peak MMR
-below current MMR, and writes the team and its roster in one transaction. A
-first-time submission returns `201`:
+below current MMR, and writes the team and its roster in one transaction. Player
+1 is the captain: `phone` is required there and optional for players 2–5. A
+`steamId` may be a SteamID64/friend number or a profile link with or without
+`https://` (for example `steamcommunity.com/id/name`). A first-time submission
+returns `201`:
 
 ```json
 { "ok": true, "id": 1, "reference": "MC-8F3A92C1D4", "updated": false }
@@ -196,6 +202,7 @@ the UI can restore the success screen on reload:
         "id": 1,
         "ign": "Player name",
         "steamId": "76561198000000000",
+        "phone": "+1 555 010 0000",
         "role": "carry",
         "currentMmr": 6200,
         "peakMmr": 7100,
@@ -227,3 +234,6 @@ across all function instances.
   console and only shows the success screen after the database write succeeds.
 - Client and server both validate the roster. Duplicate roles produce a warning
   in the UI but are not blocked by the database.
+- Steam IDs must be a number (SteamID64/friend code) or a profile link; the
+  `https://` prefix is optional. Captain phone numbers allow `+`, digits,
+  spaces, `()`, `.`, and `-`, with 7–15 digits.

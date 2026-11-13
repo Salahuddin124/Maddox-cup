@@ -21,6 +21,7 @@ const PLAYER_COLUMNS = `
   slot AS id,
   in_game_name AS ign,
   steam_id AS "steamId",
+  phone,
   role,
   current_mmr AS "currentMmr",
   peak_mmr AS "peakMmr",
@@ -36,6 +37,33 @@ function noStoreJson(body, init = {}) {
 
 function readText(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function isValidSteamId(value) {
+  const text = readText(value);
+
+  if (!text) return false;
+
+  // SteamID64, friend code, or account ID.
+  if (/^\d{1,20}$/.test(text)) return true;
+
+  // Profile link with or without the protocol, e.g.
+  // steamcommunity.com/id/name or https://s.team/p/abc
+  return /^(https?:\/\/)?(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(
+    text,
+  );
+}
+
+function isValidPhone(value) {
+  const text = readText(value);
+
+  if (!text) return false;
+
+  const digits = text.replace(/\D/g, "");
+
+  return (
+    /^[+\d][\d\s().-]*$/.test(text) && digits.length >= 7 && digits.length <= 15
+  );
 }
 
 function validationError(message) {
@@ -113,7 +141,7 @@ function validateRegistration(payload) {
   for (let index = 0; index < 5; index += 1) {
     const slot = index + 1;
     const player = payload.players[index];
-    const label = `Player ${slot}`;
+    const label = slot === 1 ? "Captain" : `Player ${slot}`;
 
     if (!player || typeof player !== "object" || Array.isArray(player)) {
       return { error: `${label}: invalid player data.` };
@@ -129,12 +157,29 @@ function validateRegistration(payload) {
 
     const steamId = readText(player.steamId);
     if (!steamId) {
-      return { error: `${label}: Steam ID or friend ID is required.` };
+      return { error: `${label}: Steam ID or profile link is required.` };
     }
-    if (steamId.length > 64) {
+    if (steamId.length > 200) {
       return {
-        error: `${label}: Steam ID or friend ID must be 64 characters or fewer.`,
+        error: `${label}: Steam ID or profile link must be 200 characters or fewer.`,
       };
+    }
+    if (!isValidSteamId(steamId)) {
+      return {
+        error: `${label}: enter a Steam ID number or a profile link.`,
+      };
+    }
+
+    let phone = "";
+
+    if (slot === 1) {
+      phone = readText(player.phone);
+      if (!phone) {
+        return { error: `${label}: phone number is required.` };
+      }
+      if (!isValidPhone(phone)) {
+        return { error: `${label}: enter a valid phone number.` };
+      }
     }
 
     const role = readText(player.role);
@@ -175,6 +220,7 @@ function validateRegistration(payload) {
     players.push({
       ign,
       steamId,
+      phone,
       role,
       currentMmr,
       peakMmr,
@@ -290,17 +336,19 @@ async function saveRegistration(pool, tokenHash, teamName, players) {
             slot,
             in_game_name,
             steam_id,
+            phone,
             role,
             current_mmr,
             peak_mmr,
             discord_url
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         `,
         [
           teamId,
           index + 1,
           player.ign,
           player.steamId,
+          player.phone || null,
           player.role,
           player.currentMmr,
           player.peakMmr,

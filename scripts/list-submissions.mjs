@@ -40,6 +40,7 @@ try {
             current_mmr AS "currentMMR",
             peak_mmr AS "peakMMR",
             steam_id AS "steamId",
+            phone,
             discord_url AS discord
           FROM players
           WHERE team_id = $1

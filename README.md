@@ -215,13 +215,37 @@ the UI can restore the success screen on reload:
 
 Without a cookie, `GET` returns `{ "ok": true, "registered": false }`.
 
+## Admin dashboard
+
+A private dashboard lives at `/admin`. It is not linked from the public page,
+carries `noindex` metadata, and `/admin` + `/api/` are disallowed in
+`robots.txt`.
+
+- Pass phrase: `dotahub14`. Override it with the `ADMIN_PASSPHRASE` environment
+  variable.
+- A correct pass phrase sets an `HttpOnly`, `SameSite=Lax` JWT cookie named
+  `maddoxx_admin` for 8 hours.
+- The JWT is signed with HS256 using `ADMIN_JWT_SECRET`. A development fallback
+  exists, but set a long random secret in production.
+- The page lists every team with its full roster, a current/peak MMR chart per
+  player, and a dashed horizontal line for the team's average current MMR.
+
+Admin API:
+
+- `POST /api/admin` with `{ "passphrase": "dotahub14" }` signs in.
+- `GET /api/admin` returns `{ "ok": true, "teams": [...] }` when the cookie is
+  valid, otherwise `401`.
+- `DELETE /api/admin` clears the admin cookie.
+
 ## Deploying to Vercel
 
 1. Import the GitHub repository in Vercel and keep the Next.js preset.
 2. Add `DATABASE_URL` to the project's environment variables — use the pooled
    connection string from the Neon Console (or connect the project through the
    Neon integration, which sets it automatically).
-3. Deploy.
+3. Add `ADMIN_PASSPHRASE` (defaults to `dotahub14`) and a long random
+   `ADMIN_JWT_SECRET` for the admin dashboard.
+4. Deploy.
 
 Registrations are stored in Neon, so they survive deployments and are shared
 across all function instances.

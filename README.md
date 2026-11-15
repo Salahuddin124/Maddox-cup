@@ -221,6 +221,12 @@ A private dashboard lives at `/admin`. It is not linked from the public page,
 carries `noindex` metadata, and `/admin` + `/api/` are disallowed in
 `robots.txt`.
 
+- `/admin` is gated on the server. The page reads the `maddoxx_admin` cookie
+  with `cookies()`, verifies the JWT, and redirects to `/admin/login` when the
+  cookie is missing, forged, or expired. The dashboard HTML is never rendered
+  for an unauthenticated request.
+- `/admin/login` shows the pass phrase form and redirects back to `/admin` if a
+  valid cookie is already present.
 - Pass phrase: `dotahub14`. Override it with the `ADMIN_PASSPHRASE` environment
   variable.
 - A correct pass phrase sets an `HttpOnly`, `SameSite=Lax` JWT cookie named
@@ -234,7 +240,8 @@ Admin API:
 
 - `POST /api/admin` with `{ "passphrase": "dotahub14" }` signs in.
 - `GET /api/admin` returns `{ "ok": true, "teams": [...] }` when the cookie is
-  valid, otherwise `401`.
+  valid, otherwise `401`. This is the only endpoint that exposes participant
+  data, and it always requires the JWT.
 - `DELETE /api/admin` clears the admin cookie.
 
 ## Deploying to Vercel

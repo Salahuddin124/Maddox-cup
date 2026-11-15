@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { BASE_STYLES } from "./admin-styles";
 
 const NUMBER_FORMAT = new Intl.NumberFormat("en-US");
 
@@ -288,12 +290,15 @@ function TeamCard({ team }) {
 }
 
 export default function AdminDashboard() {
-  const [authState, setAuthState] = useState("checking");
-  const [passphrase, setPassphrase] = useState("");
+  const router = useRouter();
   const [teams, setTeams] = useState([]);
   const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const goToLogin = useCallback(() => {
+    router.replace("/admin/login");
+    router.refresh();
+  }, [router]);
 
   const loadTeams = useCallback(async () => {
     setLoading(true);
@@ -306,8 +311,9 @@ export default function AdminDashboard() {
       });
 
       if (response.status === 401) {
+        // Cookie expired or was revoked mid-session.
         setTeams([]);
-        setAuthState("guest");
+        goToLogin();
         return;
       }
 
@@ -318,57 +324,20 @@ export default function AdminDashboard() {
       }
 
       setTeams(Array.isArray(result?.teams) ? result.teams : []);
-      setAuthState("authed");
     } catch (requestError) {
       setError(
         requestError instanceof Error
           ? requestError.message
           : "Couldn't reach the server.",
       );
-      setAuthState("guest");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [goToLogin]);
 
   useEffect(() => {
     void loadTeams();
   }, [loadTeams]);
-
-  const handleLogin = async (event) => {
-    event.preventDefault();
-
-    if (submitting) return;
-
-    setSubmitting(true);
-    setError("");
-
-    try {
-      const response = await fetch("/api/admin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({ passphrase }),
-      });
-      const result = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(result?.error || "Couldn't unlock the admin view.");
-      }
-
-      setPassphrase("");
-      setAuthState("authed");
-      await loadTeams();
-    } catch (loginError) {
-      setError(
-        loginError instanceof Error
-          ? loginError.message
-          : "Couldn't unlock the admin view.",
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const handleLogout = async () => {
     try {
@@ -377,13 +346,12 @@ export default function AdminDashboard() {
         credentials: "same-origin",
       });
     } catch {
-      // Locking the UI locally is enough if the request fails.
+      // The server gate still blocks the dashboard once the cookie is gone.
     }
 
     setTeams([]);
-    setPassphrase("");
-    setAuthState("guest");
     setError("");
+    goToLogin();
   };
 
   const totalPlayers = teams.reduce(
@@ -398,278 +366,70 @@ export default function AdminDashboard() {
 
   return (
     <>
+      <style>{BASE_STYLES}</style>
       <style>{STYLES}</style>
 
-      {authState === "checking" ? (
-        <main className="admin-shell centered-shell">
-          <p className="status">Checking access…</p>
-        </main>
-      ) : null}
-
-      {authState === "guest" ? (
-        <main className="admin-shell centered-shell">
-          <form className="login-card" onSubmit={handleLogin}>
-            <div className="lock-mark" aria-hidden="true">
-              <svg viewBox="0 0 24 24">
-                <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" />
-                <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" />
-              </svg>
-            </div>
+      <main className="admin-shell">
+        <header className="admin-topbar">
+          <div>
             <p className="eyebrow">MADDOXX CUP</p>
-            <h1>Admin access</h1>
-            <p className="login-copy">
-              Enter the pass phrase to view registered teams and MMR charts.
-            </p>
-
-            <label className="login-label" htmlFor="admin-passphrase">
-              Pass phrase
-            </label>
-            <input
-              id="admin-passphrase"
-              className="login-input"
-              type="password"
-              value={passphrase}
-              onChange={(event) => setPassphrase(event.target.value)}
-              placeholder="Enter pass phrase"
-              autoComplete="current-password"
-              required
-            />
-
-            {error ? (
-              <p className="form-error" role="alert">
-                {error}
-              </p>
-            ) : null}
-
-            <button className="primary-button" type="submit" disabled={submitting}>
-              {submitting ? "Checking…" : "Unlock"}
+            <h1>Registration admin</h1>
+          </div>
+          <div className="topbar-actions">
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => loadTeams()}
+              disabled={loading}
+            >
+              {loading ? "Refreshing…" : "Refresh"}
             </button>
-          </form>
-        </main>
-      ) : null}
+            <button type="button" className="ghost-button" onClick={handleLogout}>
+              Lock
+            </button>
+          </div>
+        </header>
 
-      {authState === "authed" ? (
-        <main className="admin-shell">
-          <header className="admin-topbar">
-            <div>
-              <p className="eyebrow">MADDOXX CUP</p>
-              <h1>Registration admin</h1>
-            </div>
-            <div className="topbar-actions">
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={() => loadTeams()}
-                disabled={loading}
-              >
-                {loading ? "Refreshing…" : "Refresh"}
-              </button>
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={handleLogout}
-              >
-                Lock
-              </button>
-            </div>
-          </header>
+        <section className="summary" aria-label="Registration summary">
+          <div className="summary-card">
+            <span className="summary-value">{teams.length}</span>
+            <span className="summary-label">Teams</span>
+          </div>
+          <div className="summary-card">
+            <span className="summary-value">{totalPlayers}</span>
+            <span className="summary-label">Players</span>
+          </div>
+          <div className="summary-card">
+            <span className="summary-value">
+              {NUMBER_FORMAT.format(overallAverage)}
+            </span>
+            <span className="summary-label">Overall avg MMR</span>
+          </div>
+        </section>
 
-          <section className="summary" aria-label="Registration summary">
-            <div className="summary-card">
-              <span className="summary-value">{teams.length}</span>
-              <span className="summary-label">Teams</span>
-            </div>
-            <div className="summary-card">
-              <span className="summary-value">{totalPlayers}</span>
-              <span className="summary-label">Players</span>
-            </div>
-            <div className="summary-card">
-              <span className="summary-value">
-                {NUMBER_FORMAT.format(overallAverage)}
-              </span>
-              <span className="summary-label">Overall avg MMR</span>
-            </div>
-          </section>
+        {error ? (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
 
-          {error ? (
-            <p className="form-error" role="alert">
-              {error}
-            </p>
-          ) : null}
-
-          {teams.length === 0 ? (
-            <p className="empty-state">No registrations yet.</p>
-          ) : (
-            <div className="team-list">
-              {teams.map((team) => (
-                <TeamCard key={team.id} team={team} />
-              ))}
-            </div>
-          )}
-        </main>
-      ) : null}
+        {loading && teams.length === 0 ? (
+          <p className="status">Loading registrations…</p>
+        ) : teams.length === 0 ? (
+          <p className="empty-state">No registrations yet.</p>
+        ) : (
+          <div className="team-list">
+            {teams.map((team) => (
+              <TeamCard key={team.id} team={team} />
+            ))}
+          </div>
+        )}
+      </main>
     </>
   );
 }
 
 const STYLES = `
-  :root {
-    color-scheme: dark;
-  }
-
-  html,
-  body {
-    margin: 0;
-    padding: 0;
-    background: #080e1a;
-  }
-
-  *,
-  *::before,
-  *::after {
-    box-sizing: border-box;
-  }
-
-  .admin-shell {
-    min-height: 100vh;
-    padding: 40px clamp(18px, 4vw, 56px) 64px;
-    background:
-      radial-gradient(900px 500px at 12% -10%, rgba(79, 140, 255, 0.16), transparent 65%),
-      radial-gradient(800px 480px at 92% 0%, rgba(255, 77, 109, 0.12), transparent 60%),
-      #080e1a;
-    color: #e6edf7;
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-      "Helvetica Neue", Arial, sans-serif;
-  }
-
-  .centered-shell {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding-top: 24px;
-  }
-
-  .status {
-    color: #8fa3c0;
-    font-size: 15px;
-  }
-
-  .eyebrow {
-    margin: 0 0 6px;
-    color: #7d93b5;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-  }
-
-  .login-card {
-    width: min(420px, 100%);
-    padding: 36px 32px 32px;
-    border: 1px solid #223149;
-    border-radius: 20px;
-    background: rgba(16, 25, 42, 0.9);
-    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(8px);
-  }
-
-  .lock-mark {
-    display: grid;
-    place-items: center;
-    width: 46px;
-    height: 46px;
-    margin-bottom: 18px;
-    border-radius: 13px;
-    background: rgba(255, 77, 109, 0.12);
-    color: #ff6b85;
-  }
-
-  .lock-mark svg {
-    width: 24px;
-    height: 24px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.8;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
-
-  .login-card h1 {
-    margin: 0 0 8px;
-    font-size: 26px;
-    letter-spacing: -0.02em;
-  }
-
-  .login-copy {
-    margin: 0 0 24px;
-    color: #8fa3c0;
-    font-size: 14px;
-    line-height: 1.55;
-  }
-
-  .login-label {
-    display: block;
-    margin-bottom: 8px;
-    color: #a9bbd6;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-
-  .login-input {
-    width: 100%;
-    padding: 12px 14px;
-    border: 1px solid #2a3b58;
-    border-radius: 11px;
-    background: #0b1424;
-    color: #e6edf7;
-    font: inherit;
-    font-size: 15px;
-    outline: none;
-    transition: border-color 120ms ease, box-shadow 120ms ease;
-  }
-
-  .login-input:focus {
-    border-color: #4f8cff;
-    box-shadow: 0 0 0 3px rgba(79, 140, 255, 0.18);
-  }
-
-  .form-error {
-    margin: 14px 0 0;
-    padding: 10px 12px;
-    border: 1px solid rgba(255, 77, 109, 0.4);
-    border-radius: 10px;
-    background: rgba(255, 77, 109, 0.1);
-    color: #ff9caf;
-    font-size: 13px;
-  }
-
-  .primary-button {
-    width: 100%;
-    margin-top: 18px;
-    padding: 12px 16px;
-    border: 0;
-    border-radius: 11px;
-    background: linear-gradient(135deg, #ff4d6d, #d61f43);
-    color: #fff;
-    font: inherit;
-    font-size: 15px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: transform 120ms ease, filter 120ms ease;
-  }
-
-  .primary-button:hover:not(:disabled) {
-    filter: brightness(1.08);
-    transform: translateY(-1px);
-  }
-
-  .primary-button:disabled {
-    cursor: progress;
-    opacity: 0.7;
-  }
-
   .admin-topbar {
     display: flex;
     flex-wrap: wrap;
@@ -1045,10 +805,6 @@ const STYLES = `
   }
 
   @media (max-width: 720px) {
-    .admin-shell {
-      padding: 28px 14px 48px;
-    }
-
     .summary {
       grid-template-columns: 1fr;
     }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BASE_STYLES } from "./admin-styles";
 
@@ -40,7 +40,82 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? "Unknown date" : date.toLocaleString();
 }
 
+/* Animates a number from its previous value to the target. */
+function useCountUp(target, duration = 800) {
+  const [value, setValue] = useState(0);
+  const fromRef = useRef(0);
+
+  useEffect(() => {
+    const reduced = window.matchMedia?.(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+
+    if (reduced) {
+      fromRef.current = target;
+      setValue(target);
+      return undefined;
+    }
+
+    const from = fromRef.current;
+    let frame;
+    let start;
+
+    const tick = (now) => {
+      start ??= now;
+      const progress = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const next = Math.round(from + (target - from) * eased);
+
+      fromRef.current = next;
+      setValue(next);
+
+      if (progress < 1) frame = requestAnimationFrame(tick);
+    };
+
+    frame = requestAnimationFrame(tick);
+
+    return () => cancelAnimationFrame(frame);
+  }, [target, duration]);
+
+  return value;
+}
+
+function SummaryCard({ label, value, format = true }) {
+  const animated = useCountUp(value);
+
+  return (
+    <div className="summary-card">
+      <span className="summary-value">
+        {format ? NUMBER_FORMAT.format(animated) : animated}
+      </span>
+      <span className="summary-label">{label}</span>
+    </div>
+  );
+}
+
+function Chevron() {
+  return (
+    <svg
+      className="chevron"
+      viewBox="0 0 20 20"
+      width="18"
+      height="18"
+      aria-hidden="true"
+    >
+      <path
+        d="M5 7.5l5 5 5-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function MmrChart({ team }) {
+  const [hovered, setHovered] = useState(null);
   const players = [...team.players].sort((a, b) => a.id - b.id);
 
   if (players.length === 0) {
@@ -48,8 +123,8 @@ function MmrChart({ team }) {
   }
 
   const width = 820;
-  const height = 340;
-  const padding = { top: 28, right: 118, bottom: 58, left: 66 };
+  const height = 320;
+  const padding = { top: 24, right: 96, bottom: 56, left: 62 };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
 
@@ -85,10 +160,33 @@ function MmrChart({ team }) {
   const peakPoints = pointsFor(peakMmr);
   const teamAverage = average(currentMmr);
   const averageY = yAt(teamAverage);
+  const baseY = padding.top + plotHeight;
+
+  const areaPath = `${pathFor(currentPoints)} L ${currentPoints.at(-1)[0].toFixed(1)} ${baseY} L ${currentPoints[0][0].toFixed(1)} ${baseY} Z`;
 
   const ticks = Array.from({ length: 6 }, (_, index) =>
     Math.round(min + (span * index) / 5),
   );
+
+  const columnWidth = plotWidth / Math.max(players.length - 1, 1);
+  const tooltipWidth = 154;
+  const tooltipHeight = 64;
+  const tooltipX =
+    hovered === null
+      ? 0
+      : Math.min(
+          Math.max(xAt(hovered) - tooltipWidth / 2, padding.left),
+          padding.left + plotWidth - tooltipWidth,
+        );
+  const tooltipY =
+    hovered === null
+      ? 0
+      : Math.max(
+          Math.min(yAt(Math.max(currentMmr[hovered], peakMmr[hovered])) - tooltipHeight - 14, baseY - tooltipHeight),
+          2,
+        );
+
+  const gradientId = `area-${team.id}`;
 
   return (
     <figure className="chart">
@@ -96,7 +194,15 @@ function MmrChart({ team }) {
         viewBox={`0 0 ${width} ${height}`}
         role="img"
         aria-label={`Current and peak MMR chart for ${team.teamName}`}
+        onMouseLeave={() => setHovered(null)}
       >
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--current)" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="var(--current)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
         {ticks.map((value) => (
           <g key={`tick-${value}`}>
             <line
@@ -117,19 +223,22 @@ function MmrChart({ team }) {
           </g>
         ))}
 
+        {hovered !== null ? (
+          <line
+            className="hover-line"
+            x1={xAt(hovered)}
+            y1={padding.top}
+            x2={xAt(hovered)}
+            y2={baseY}
+          />
+        ) : null}
+
         {players.map((player, index) => (
           <g key={`player-${player.id}`}>
-            <line
-              className="grid-line grid-line-vertical"
-              x1={xAt(index)}
-              y1={padding.top}
-              x2={xAt(index)}
-              y2={padding.top + plotHeight}
-            />
             <text
-              className="axis-label"
+              className={`axis-label ${hovered === index ? "axis-active" : ""}`}
               x={xAt(index)}
-              y={height - 30}
+              y={height - 28}
               textAnchor="middle"
             >
               {truncate(player.ign)}
@@ -137,7 +246,7 @@ function MmrChart({ team }) {
             <text
               className="axis-sub-label"
               x={xAt(index)}
-              y={height - 13}
+              y={height - 11}
               textAnchor="middle"
             >
               {player.id === 1 ? "Captain" : `Player ${player.id}`}
@@ -160,38 +269,64 @@ function MmrChart({ team }) {
           Avg {NUMBER_FORMAT.format(teamAverage)}
         </text>
 
-        <path className="series series-peak" d={pathFor(peakPoints)} />
-        <path className="series series-current" d={pathFor(currentPoints)} />
+        <g className="reveal">
+          <path d={areaPath} fill={`url(#${gradientId})`} />
+          <path className="series series-peak" d={pathFor(peakPoints)} />
+          <path className="series series-current" d={pathFor(currentPoints)} />
 
-        {peakPoints.map(([x, y], index) => (
-          <circle
-            key={`peak-${players[index].id}`}
-            className="dot dot-peak"
-            cx={x}
-            cy={y}
-            r={4.5}
-          >
-            <title>
-              {players[index].ign} peak MMR:{" "}
-              {NUMBER_FORMAT.format(peakMmr[index])}
-            </title>
-          </circle>
+          {peakPoints.map(([x, y], index) => (
+            <circle
+              key={`peak-${players[index].id}`}
+              className={`dot dot-peak ${hovered === index ? "dot-active" : ""}`}
+              cx={x}
+              cy={y}
+              r={4}
+            />
+          ))}
+
+          {currentPoints.map(([x, y], index) => (
+            <circle
+              key={`current-${players[index].id}`}
+              className={`dot dot-current ${hovered === index ? "dot-active" : ""}`}
+              cx={x}
+              cy={y}
+              r={4.5}
+            />
+          ))}
+        </g>
+
+        {players.map((player, index) => (
+          <rect
+            key={`hit-${player.id}`}
+            x={xAt(index) - columnWidth / 2}
+            y={padding.top}
+            width={columnWidth}
+            height={plotHeight}
+            fill="transparent"
+            onMouseEnter={() => setHovered(index)}
+          />
         ))}
 
-        {currentPoints.map(([x, y], index) => (
-          <circle
-            key={`current-${players[index].id}`}
-            className="dot dot-current"
-            cx={x}
-            cy={y}
-            r={4.5}
-          >
-            <title>
-              {players[index].ign} current MMR:{" "}
-              {NUMBER_FORMAT.format(currentMmr[index])}
-            </title>
-          </circle>
-        ))}
+        {hovered !== null ? (
+          <g className="tooltip" pointerEvents="none">
+            <rect
+              x={tooltipX}
+              y={tooltipY}
+              width={tooltipWidth}
+              height={tooltipHeight}
+              rx="8"
+            />
+            <text className="tooltip-title" x={tooltipX + 12} y={tooltipY + 20}>
+              {truncate(players[hovered].ign, 18)}
+            </text>
+            <text className="tooltip-row" x={tooltipX + 12} y={tooltipY + 38}>
+              Current {NUMBER_FORMAT.format(currentMmr[hovered])}
+            </text>
+            <text className="tooltip-row" x={tooltipX + 12} y={tooltipY + 54}>
+              Peak {NUMBER_FORMAT.format(peakMmr[hovered])}
+            </text>
+          </g>
+        ) : null}
       </svg>
 
       <figcaption className="legend">
@@ -209,7 +344,7 @@ function MmrChart({ team }) {
   );
 }
 
-function TeamCard({ team }) {
+function TeamCard({ team, open, onToggle, index }) {
   const players = [...team.players].sort((a, b) => a.id - b.id);
   const averageCurrent = average(
     players.map((player) => Number(player.currentMmr) || 0),
@@ -217,75 +352,120 @@ function TeamCard({ team }) {
   const averagePeak = average(
     players.map((player) => Number(player.peakMmr) || 0),
   );
+  const panelId = `team-${team.id}-panel`;
 
   return (
-    <section className="team-card" aria-labelledby={`team-${team.id}-title`}>
-      <header className="team-head">
-        <div>
-          <h2 className="team-title" id={`team-${team.id}-title`}>
-            {team.teamName}
-          </h2>
-          <p className="team-meta">
-            <span className="team-reference">{team.reference}</span>
-            <span aria-hidden="true"> · </span>
-            {formatDate(team.createdAt)}
-          </p>
-        </div>
-        <div className="team-averages">
-          <span>
-            Avg current <strong>{NUMBER_FORMAT.format(averageCurrent)}</strong>
+    <section
+      className={`team-card ${open ? "is-open" : ""}`}
+      style={{ "--i": Math.min(index, 8) }}
+    >
+      <h2 className="team-heading">
+        <button
+          type="button"
+          className="team-toggle"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={onToggle}
+        >
+          <span className="team-avatar" aria-hidden="true">
+            {String(team.teamName ?? "?").trim().charAt(0).toUpperCase()}
           </span>
-          <span>
-            Avg peak <strong>{NUMBER_FORMAT.format(averagePeak)}</strong>
+
+          <span className="team-identity">
+            <span className="team-title">{team.teamName}</span>
+            <span className="team-meta">
+              <span className="team-reference">{team.reference}</span>
+              <span className="team-date">{formatDate(team.createdAt)}</span>
+            </span>
           </span>
+
+          <span className="team-stats">
+            <span className="stat">
+              <span className="stat-label">Avg current</span>
+              <span className="stat-value">
+                {NUMBER_FORMAT.format(averageCurrent)}
+              </span>
+            </span>
+            <span className="stat">
+              <span className="stat-label">Avg peak</span>
+              <span className="stat-value">
+                {NUMBER_FORMAT.format(averagePeak)}
+              </span>
+            </span>
+            <span className="stat stat-count">
+              <span className="stat-label">Players</span>
+              <span className="stat-value">{players.length}</span>
+            </span>
+          </span>
+
+          <Chevron />
+        </button>
+      </h2>
+
+      <div className="collapse" id={panelId} role="region">
+        <div className="collapse-inner">
+          <div className="team-body">
+            <MmrChart team={team} />
+
+            <div className="table-wrap">
+              <table>
+                <caption className="sr-only">
+                  Players registered for {team.teamName}
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Player</th>
+                    <th scope="col">Role</th>
+                    <th scope="col">Current MMR</th>
+                    <th scope="col">Peak MMR</th>
+                    <th scope="col">Steam ID</th>
+                    <th scope="col">Phone</th>
+                    <th scope="col">Discord</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {players.map((player) => (
+                    <tr key={player.id}>
+                      <td className="player-cell">
+                        {player.ign}
+                        {player.id === 1 ? (
+                          <span className="captain-badge">Captain</span>
+                        ) : null}
+                      </td>
+                      <td>
+                        <span className="role-chip">
+                          {roleLabel(player.role)}
+                        </span>
+                      </td>
+                      <td className="number-cell">
+                        {NUMBER_FORMAT.format(Number(player.currentMmr) || 0)}
+                      </td>
+                      <td className="number-cell">
+                        {NUMBER_FORMAT.format(Number(player.peakMmr) || 0)}
+                      </td>
+                      <td className="mono-cell">{player.steamId || "—"}</td>
+                      <td className="mono-cell">{player.phone || "—"}</td>
+                      <td className="mono-cell">{player.discord || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </header>
-
-      <MmrChart team={team} />
-
-      <div className="table-wrap">
-        <table>
-          <caption className="sr-only">
-            Players registered for {team.teamName}
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">Player</th>
-              <th scope="col">Role</th>
-              <th scope="col">Current MMR</th>
-              <th scope="col">Peak MMR</th>
-              <th scope="col">Steam ID</th>
-              <th scope="col">Phone</th>
-              <th scope="col">Discord</th>
-            </tr>
-          </thead>
-          <tbody>
-            {players.map((player) => (
-              <tr key={player.id}>
-                <td className="player-cell">
-                  {player.ign}
-                  {player.id === 1 ? (
-                    <span className="captain-badge">Captain</span>
-                  ) : null}
-                </td>
-                <td>
-                  <span className="role-chip">{roleLabel(player.role)}</span>
-                </td>
-                <td className="number-cell">
-                  {NUMBER_FORMAT.format(Number(player.currentMmr) || 0)}
-                </td>
-                <td className="number-cell">
-                  {NUMBER_FORMAT.format(Number(player.peakMmr) || 0)}
-                </td>
-                <td className="mono-cell">{player.steamId || "—"}</td>
-                <td className="mono-cell">{player.phone || "—"}</td>
-                <td className="mono-cell">{player.discord || "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
     </section>
+  );
+}
+
+function SkeletonList() {
+  return (
+    <div className="team-list" aria-busy="true" aria-live="polite">
+      <span className="sr-only">Loading registrations…</span>
+      {[0, 1, 2].map((item) => (
+        <div className="skeleton" key={item} style={{ "--i": item }} />
+      ))}
+    </div>
   );
 }
 
@@ -294,6 +474,8 @@ export default function AdminDashboard() {
   const [teams, setTeams] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [openIds, setOpenIds] = useState(() => new Set());
+  const didAutoOpen = useRef(false);
 
   const goToLogin = useCallback(() => {
     router.replace("/admin/login");
@@ -339,20 +521,26 @@ export default function AdminDashboard() {
     void loadTeams();
   }, [loadTeams]);
 
-  const handleLogout = async () => {
-    try {
-      await fetch("/api/admin", {
-        method: "DELETE",
-        credentials: "same-origin",
-      });
-    } catch {
-      // The server gate still blocks the dashboard once the cookie is gone.
+  // Open the first team once so the page doesn't load as a wall of closed rows.
+  useEffect(() => {
+    if (!didAutoOpen.current && teams.length > 0) {
+      didAutoOpen.current = true;
+      setOpenIds(new Set([teams[0].id]));
     }
+  }, [teams]);
 
-    setTeams([]);
-    setError("");
-    goToLogin();
-  };
+  const toggleTeam = (id) =>
+    setOpenIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const allOpen = teams.length > 0 && openIds.size === teams.length;
+
+  const toggleAll = () =>
+    setOpenIds(allOpen ? new Set() : new Set(teams.map((team) => team.id)));
 
   const totalPlayers = teams.reduce(
     (total, team) => total + team.players.length,
@@ -369,213 +557,432 @@ export default function AdminDashboard() {
       <style>{BASE_STYLES}</style>
       <style>{STYLES}</style>
 
-      <main className="admin-shell">
-        <header className="admin-topbar">
-          <div>
-            <p className="eyebrow">MADDOXX CUP</p>
-            <h1>Registration admin</h1>
-          </div>
-          <div className="topbar-actions">
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={() => loadTeams()}
-              disabled={loading}
-            >
-              {loading ? "Refreshing…" : "Refresh"}
-            </button>
-            <button type="button" className="ghost-button" onClick={handleLogout}>
-              Lock
-            </button>
-          </div>
-        </header>
+      <main className="admin-shell dash">
+        <div className="dash-inner">
+          <header className="admin-topbar">
+            <div className="brand">
+              <span className="brand-mark" aria-hidden="true" />
+              <div>
+                <p className="brand-name">Maddoxx Cup</p>
+                <h1>Registrations</h1>
+              </div>
+            </div>
+            <div className="topbar-actions">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => loadTeams()}
+                disabled={loading}
+              >
+                <svg
+                  className={`btn-icon ${loading ? "spin" : ""}`}
+                  viewBox="0 0 20 20"
+                  width="15"
+                  height="15"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M16 10a6 6 0 1 1-1.76-4.24M16 4v3.5h-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                {loading ? "Refreshing" : "Refresh"}
+              </button>
+            </div>
+          </header>
 
-        <section className="summary" aria-label="Registration summary">
-          <div className="summary-card">
-            <span className="summary-value">{teams.length}</span>
-            <span className="summary-label">Teams</span>
-          </div>
-          <div className="summary-card">
-            <span className="summary-value">{totalPlayers}</span>
-            <span className="summary-label">Players</span>
-          </div>
-          <div className="summary-card">
-            <span className="summary-value">
-              {NUMBER_FORMAT.format(overallAverage)}
-            </span>
-            <span className="summary-label">Overall avg MMR</span>
-          </div>
-        </section>
+          <section className="summary" aria-label="Registration summary">
+            <SummaryCard label="Teams" value={teams.length} format={false} />
+            <SummaryCard label="Players" value={totalPlayers} format={false} />
+            <SummaryCard label="Average MMR" value={overallAverage} />
+          </section>
 
-        {error ? (
-          <p className="form-error" role="alert">
-            {error}
-          </p>
-        ) : null}
+          {error ? (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          ) : null}
 
-        {loading && teams.length === 0 ? (
-          <p className="status">Loading registrations…</p>
-        ) : teams.length === 0 ? (
-          <p className="empty-state">No registrations yet.</p>
-        ) : (
-          <div className="team-list">
-            {teams.map((team) => (
-              <TeamCard key={team.id} team={team} />
-            ))}
-          </div>
-        )}
+          {teams.length > 1 ? (
+            <div className="list-toolbar">
+              <p>
+                {teams.length} teams
+                <span className="toolbar-sub">
+                  {" "}
+                  — {openIds.size} expanded
+                </span>
+              </p>
+              <button type="button" className="btn btn-quiet" onClick={toggleAll}>
+                {allOpen ? "Collapse all" : "Expand all"}
+              </button>
+            </div>
+          ) : null}
+
+          {loading && teams.length === 0 ? (
+            <SkeletonList />
+          ) : teams.length === 0 ? (
+            <p className="empty-state">
+              No registrations yet. New teams will appear here as they sign up.
+            </p>
+          ) : (
+            <div className="team-list">
+              {teams.map((team, index) => (
+                <TeamCard
+                  key={team.id}
+                  team={team}
+                  index={index}
+                  open={openIds.has(team.id)}
+                  onToggle={() => toggleTeam(team.id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </main>
     </>
   );
 }
 
 const STYLES = `
-  .admin-topbar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 18px;
-    align-items: flex-end;
-    justify-content: space-between;
-    max-width: 1240px;
-    margin: 0 auto 26px;
+  .dash-inner {
+    max-width: 1180px;
+    margin: 0 auto;
   }
 
-  .admin-topbar h1 {
+  /* ---------- Top bar ---------- */
+  .dash .admin-topbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: center;
+    justify-content: space-between;
+    max-width: none;
+    margin: 0 0 28px;
+    animation: fade-in 500ms var(--ease) both;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .brand-mark {
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+    background: linear-gradient(145deg, #4b5a85, #2c3550);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  }
+
+  .brand-name {
+    margin: 0 0 2px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .dash .admin-topbar h1 {
     margin: 0;
-    font-size: clamp(26px, 3.4vw, 38px);
-    letter-spacing: -0.03em;
+    font-size: clamp(22px, 3vw, 28px);
+    font-weight: 650;
+    letter-spacing: -0.02em;
   }
 
   .topbar-actions {
     display: flex;
-    gap: 10px;
+    gap: 8px;
   }
 
-  .ghost-button {
-    padding: 9px 16px;
-    border: 1px solid #2a3b58;
-    border-radius: 10px;
-    background: rgba(18, 28, 46, 0.85);
-    color: #cfdcf0;
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--surface);
+    color: var(--text-soft);
     font: inherit;
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 550;
     cursor: pointer;
-    transition: border-color 120ms ease, background 120ms ease;
+    transition: background 160ms ease, border-color 160ms ease,
+      color 160ms ease, transform 160ms var(--ease);
   }
 
-  .ghost-button:hover:not(:disabled) {
-    border-color: #4f8cff;
-    background: #16233a;
+  .btn:hover:not(:disabled) {
+    border-color: #3a4252;
+    background: var(--surface-2);
+    color: var(--text);
   }
 
-  .ghost-button:disabled {
+  .btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  .btn:disabled {
     cursor: progress;
-    opacity: 0.6;
+    opacity: 0.65;
   }
 
+  .btn-quiet {
+    background: transparent;
+  }
+
+  .btn:focus-visible,
+  .team-toggle:focus-visible {
+    outline: 2px solid var(--current);
+    outline-offset: 2px;
+  }
+
+  .btn-icon.spin {
+    animation: spin 800ms linear infinite;
+  }
+
+  /* ---------- Summary ---------- */
   .summary {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 14px;
-    max-width: 1240px;
-    margin: 0 auto 24px;
+    gap: 12px;
+    max-width: none;
+    margin: 0 0 28px;
   }
 
   .summary-card {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
     padding: 18px 20px;
-    border: 1px solid #223149;
-    border-radius: 14px;
-    background: rgba(16, 25, 42, 0.72);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    background: var(--surface);
+    animation: fade-in 600ms var(--ease) both;
   }
 
+  .summary-card:nth-child(2) { animation-delay: 70ms; }
+  .summary-card:nth-child(3) { animation-delay: 140ms; }
+
   .summary-value {
-    color: #fff;
-    font-size: 28px;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
+    font-size: 30px;
+    font-weight: 650;
     letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
   }
 
   .summary-label {
-    color: #8fa3c0;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  .team-list {
-    display: grid;
-    gap: 26px;
-    max-width: 1240px;
-    margin: 0 auto;
-  }
-
-  .team-card {
-    padding: 22px;
-    border: 1px solid #223149;
-    border-radius: 18px;
-    background: rgba(14, 23, 40, 0.82);
-    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
-  }
-
-  .team-head {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 14px;
-    align-items: flex-start;
-    justify-content: space-between;
-    margin-bottom: 18px;
-  }
-
-  .team-title {
-    margin: 0 0 6px;
-    font-size: 22px;
-    letter-spacing: -0.02em;
-  }
-
-  .team-meta {
-    margin: 0;
-    color: #8fa3c0;
+    color: var(--muted);
     font-size: 13px;
   }
 
-  .team-reference {
-    color: #b9c9e3;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 12.5px;
+  /* ---------- Toolbar ---------- */
+  .list-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 0 0 12px;
+    padding: 0 2px;
   }
 
-  .team-averages {
+  .list-toolbar p {
+    margin: 0;
+    color: var(--text-soft);
+    font-size: 14px;
+    font-weight: 550;
+  }
+
+  .toolbar-sub {
+    color: var(--muted);
+    font-weight: 400;
+  }
+
+  /* ---------- Team accordion ---------- */
+  .team-list {
+    display: grid;
+    gap: 10px;
+    max-width: none;
+    margin: 0;
+  }
+
+  .team-card {
+    border: 1px solid var(--border-soft);
+    border-radius: 14px;
+    background: var(--surface);
+    overflow: hidden;
+    transition: border-color 220ms ease, box-shadow 300ms ease,
+      background 220ms ease;
+    animation: fade-in 600ms var(--ease) both;
+    animation-delay: calc(var(--i, 0) * 60ms);
+  }
+
+  .team-card:hover {
+    border-color: var(--border);
+  }
+
+  .team-card.is-open {
+    border-color: #343c4b;
+    box-shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.6);
+  }
+
+  .team-heading {
+    margin: 0;
+    font-size: inherit;
+  }
+
+  .team-toggle {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    padding: 16px 20px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background 160ms ease;
+  }
+
+  .team-toggle:hover {
+    background: rgba(255, 255, 255, 0.025);
+  }
+
+  .team-avatar {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 11px;
+    background: var(--surface-2);
+    box-shadow: inset 0 0 0 1px var(--border);
+    color: var(--current);
+    font-size: 16px;
+    font-weight: 650;
+    transition: background 220ms ease, color 220ms ease;
+  }
+
+  .team-card.is-open .team-avatar {
+    background: #2a3350;
+    color: #c4d0f5;
+  }
+
+  .team-identity {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .team-title {
+    overflow: hidden;
+    font-size: 16px;
+    font-weight: 620;
+    letter-spacing: -0.01em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .team-meta {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .team-averages span {
-    padding: 7px 12px;
-    border: 1px solid #223149;
-    border-radius: 999px;
-    background: #101b2e;
-    color: #9db2d1;
+    gap: 4px 14px;
+    color: var(--muted);
     font-size: 12.5px;
   }
 
-  .team-averages strong {
-    color: #e6edf7;
+  .team-reference {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+  }
+
+  .team-stats {
+    display: flex;
+    flex: none;
+    gap: 22px;
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+  }
+
+  .stat-label {
+    color: var(--muted);
+    font-size: 11.5px;
+  }
+
+  .stat-value {
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
   }
 
+  .chevron {
+    flex: none;
+    color: var(--muted);
+    transition: transform 380ms var(--ease), color 200ms ease;
+  }
+
+  .team-toggle:hover .chevron {
+    color: var(--text-soft);
+  }
+
+  .team-card.is-open .chevron {
+    transform: rotate(180deg);
+    color: var(--text);
+  }
+
+  /* Smooth height animation without measuring: grid rows 0fr -> 1fr */
+  .collapse {
+    display: grid;
+    grid-template-rows: 0fr;
+    visibility: hidden;
+    transition: grid-template-rows 420ms var(--ease), visibility 0s linear 420ms;
+  }
+
+  .team-card.is-open .collapse {
+    grid-template-rows: 1fr;
+    visibility: visible;
+    transition: grid-template-rows 420ms var(--ease), visibility 0s;
+  }
+
+  .collapse-inner {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .team-body {
+    padding: 4px 20px 22px;
+    border-top: 1px solid var(--border-soft);
+    opacity: 0;
+    transform: translateY(-6px);
+    transition: opacity 260ms ease, transform 420ms var(--ease);
+  }
+
+  .team-card.is-open .team-body {
+    padding-top: 20px;
+    opacity: 1;
+    transform: none;
+    transition-delay: 90ms;
+  }
+
+  /* ---------- Chart ---------- */
   .chart {
     margin: 0;
     padding: 14px 14px 10px;
-    border: 1px solid #1d2b44;
-    border-radius: 14px;
-    background: #0a1322;
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    background: #161a21;
   }
 
   .chart svg {
@@ -588,34 +995,36 @@ const STYLES = `
   .chart-empty {
     margin: 0;
     padding: 30px;
-    border: 1px dashed #2a3b58;
+    border: 1px dashed var(--border);
     border-radius: 12px;
-    color: #8fa3c0;
+    color: var(--muted);
     text-align: center;
   }
 
   .grid-line {
-    stroke: #1c2a42;
+    stroke: #232933;
     stroke-width: 1;
   }
 
-  .grid-line-vertical {
-    stroke-dasharray: 2 7;
-    opacity: 0.7;
+  .hover-line {
+    stroke: #3a4252;
+    stroke-width: 1;
   }
 
   .axis-label {
-    fill: #8fa3c0;
+    fill: var(--muted);
     font-size: 11px;
     font-variant-numeric: tabular-nums;
+    transition: fill 150ms ease;
+  }
+
+  .axis-active {
+    fill: var(--text);
   }
 
   .axis-sub-label {
-    fill: #5d7191;
-    font-size: 9.5px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    fill: #596172;
+    font-size: 10px;
   }
 
   .series {
@@ -625,39 +1034,66 @@ const STYLES = `
   }
 
   .series-current {
-    stroke: #ff4d6d;
-    stroke-width: 3;
+    stroke: var(--current);
+    stroke-width: 2.5;
   }
 
   .series-peak {
-    stroke: #4f8cff;
-    stroke-width: 2.5;
-    stroke-dasharray: 8 6;
+    stroke: var(--peak);
+    stroke-width: 2;
+    stroke-dasharray: 7 6;
   }
 
   .dot {
-    stroke: #0a1322;
+    stroke: #161a21;
     stroke-width: 2;
+    transition: r 160ms var(--ease);
+  }
+
+  .dot-active {
+    r: 6.5;
   }
 
   .dot-current {
-    fill: #ff4d6d;
+    fill: var(--current);
   }
 
   .dot-peak {
-    fill: #4f8cff;
+    fill: var(--peak);
   }
 
   .average-line {
-    stroke: #34d399;
-    stroke-width: 2;
-    stroke-dasharray: 4 6;
+    stroke: var(--avg);
+    stroke-width: 1.5;
+    stroke-dasharray: 3 6;
+    opacity: 0.8;
   }
 
   .average-label {
-    fill: #34d399;
+    fill: var(--avg);
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .team-card.is-open .reveal {
+    animation: reveal 1100ms var(--ease) 180ms both;
+  }
+
+  .tooltip rect {
+    fill: #232933;
+    stroke: #3a4252;
+  }
+
+  .tooltip-title {
+    fill: var(--text);
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+
+  .tooltip-row {
+    fill: var(--text-soft);
+    font-size: 11.5px;
     font-variant-numeric: tabular-nums;
   }
 
@@ -665,15 +1101,15 @@ const STYLES = `
     display: flex;
     flex-wrap: wrap;
     gap: 18px;
-    margin: 10px 4px 2px;
-    color: #9db2d1;
+    margin: 8px 4px 2px;
+    color: var(--muted);
     font-size: 12px;
   }
 
   .legend span {
     display: inline-flex;
     align-items: center;
-    gap: 7px;
+    gap: 8px;
   }
 
   .swatch {
@@ -683,14 +1119,12 @@ const STYLES = `
     border-radius: 999px;
   }
 
-  .swatch-current {
-    background: #ff4d6d;
-  }
+  .swatch-current { background: var(--current); }
 
   .swatch-peak {
     background: repeating-linear-gradient(
       90deg,
-      #4f8cff 0 5px,
+      var(--peak) 0 5px,
       transparent 5px 8px
     );
   }
@@ -698,48 +1132,55 @@ const STYLES = `
   .swatch-average {
     background: repeating-linear-gradient(
       90deg,
-      #34d399 0 3px,
+      var(--avg) 0 3px,
       transparent 3px 6px
     );
   }
 
+  /* ---------- Table ---------- */
   .table-wrap {
     margin-top: 16px;
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
     overflow-x: auto;
   }
 
-  table {
+  .dash table {
     width: 100%;
     min-width: 780px;
     border-collapse: collapse;
     font-size: 13px;
   }
 
-  th {
-    padding: 10px 12px;
-    border-bottom: 1px solid #223149;
-    color: #7d93b5;
-    font-size: 10.5px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
+  .dash th {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border-soft);
+    background: #171b22;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
     text-align: left;
-    text-transform: uppercase;
     white-space: nowrap;
   }
 
-  td {
-    padding: 11px 12px;
-    border-bottom: 1px solid #182640;
-    color: #cfdcf0;
+  .dash td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border-soft);
+    color: var(--text-soft);
     vertical-align: middle;
+    transition: background 140ms ease;
   }
 
-  tbody tr:last-child td {
+  .dash tbody tr:hover td {
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .dash tbody tr:last-child td {
     border-bottom: 0;
   }
 
   .player-cell {
-    color: #fff;
+    color: var(--text) !important;
     font-weight: 600;
     white-space: nowrap;
   }
@@ -747,23 +1188,21 @@ const STYLES = `
   .captain-badge {
     display: inline-block;
     margin-left: 8px;
-    padding: 2px 7px;
-    border-radius: 999px;
-    background: rgba(255, 77, 109, 0.16);
-    color: #ff9caf;
-    font-size: 9.5px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: rgba(210, 178, 122, 0.14);
+    color: var(--peak);
+    font-size: 11px;
+    font-weight: 600;
   }
 
   .role-chip {
     display: inline-block;
-    padding: 3px 9px;
-    border-radius: 999px;
-    background: #1a2942;
-    color: #9db7dd;
-    font-size: 11.5px;
+    padding: 3px 10px;
+    border-radius: 6px;
+    background: var(--surface-2);
+    color: var(--text-soft);
+    font-size: 12px;
     white-space: nowrap;
   }
 
@@ -773,23 +1212,50 @@ const STYLES = `
   }
 
   .mono-cell {
-    color: #9db2d1;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 12px;
     max-width: 220px;
     overflow: hidden;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .empty-state {
-    max-width: 1240px;
-    margin: 0 auto;
-    padding: 48px 24px;
-    border: 1px dashed #2a3b58;
-    border-radius: 16px;
-    color: #8fa3c0;
+  /* ---------- States ---------- */
+  .dash .form-error {
+    margin: 0 0 16px;
+    padding: 12px 16px;
+    border: 1px solid rgba(224, 138, 138, 0.35);
+    border-radius: 10px;
+    background: rgba(224, 138, 138, 0.08);
+    color: var(--danger);
+    font-size: 14px;
+    animation: fade-in 300ms var(--ease) both;
+  }
+
+  .dash .empty-state {
+    max-width: none;
+    margin: 0;
+    padding: 56px 24px;
+    border: 1px dashed var(--border);
+    border-radius: 14px;
+    color: var(--muted);
     text-align: center;
+  }
+
+  .skeleton {
+    height: 74px;
+    border: 1px solid var(--border-soft);
+    border-radius: 14px;
+    background: linear-gradient(
+        100deg,
+        transparent 30%,
+        rgba(255, 255, 255, 0.045) 50%,
+        transparent 70%
+      ),
+      var(--surface);
+    background-size: 220% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+    animation-delay: calc(var(--i, 0) * 120ms);
   }
 
   .sr-only {
@@ -804,21 +1270,52 @@ const STYLES = `
     border: 0;
   }
 
+  /* ---------- Keyframes ---------- */
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  @keyframes reveal {
+    from { clip-path: inset(-12px 100% -12px -12px); }
+    to { clip-path: inset(-12px -12px -12px -12px); }
+  }
+
+  @keyframes shimmer {
+    from { background-position: 120% 0; }
+    to { background-position: -120% 0; }
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 860px) {
+    .stat-count { display: none; }
+  }
+
   @media (max-width: 720px) {
-    .summary {
-      grid-template-columns: 1fr;
+    .summary { grid-template-columns: 1fr; }
+
+    .team-toggle {
+      flex-wrap: wrap;
+      padding: 14px 16px;
     }
 
-    .team-card {
-      padding: 16px;
+    .team-identity { flex-basis: calc(100% - 100px); }
+
+    .team-stats {
+      order: 3;
+      width: 100%;
+      gap: 24px;
+      padding-left: 56px;
     }
 
-    .chart {
-      padding: 8px 6px 6px;
-    }
+    .stat { align-items: flex-start; }
 
-    .legend {
-      gap: 12px;
-    }
+    .team-body { padding: 4px 14px 18px; }
+
+    .chart { padding: 8px 6px 6px; }
   }
 `;

@@ -1509,15 +1509,15 @@ button:disabled {
 
 .countdown-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(58px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(4, minmax(68px, 1fr));
+  gap: 9px;
 }
 
 .countdown-unit {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 9px 8px 8px;
+  padding: 11px 10px 9px;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.06);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
@@ -1526,7 +1526,7 @@ button:disabled {
 .countdown-value {
   color: #ffffff;
   font-family: 'Barlow Condensed', 'Arial Narrow', Impact, sans-serif;
-  font-size: clamp(26px, 4.4vw, 34px);
+  font-size: clamp(32px, 5.2vw, 44px);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -2279,16 +2279,16 @@ button:disabled {
   }
 
   .countdown-grid {
-    grid-template-columns: repeat(4, minmax(48px, 1fr));
+    grid-template-columns: repeat(4, minmax(54px, 1fr));
     gap: 6px;
   }
 
   .countdown-unit {
-    padding: 8px 4px 7px;
+    padding: 9px 4px 8px;
   }
 
   .countdown-value {
-    font-size: 26px;
+    font-size: 30px;
   }
 
   .countdown-unit-label {

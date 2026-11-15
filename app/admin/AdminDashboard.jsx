@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Logo, { LOGO_STYLES } from "../Logo";
 import { BASE_STYLES } from "./admin-styles";
+import { ADMIN_THEME_KEY } from "./theme";
 
 const NUMBER_FORMAT = new Intl.NumberFormat("en-US");
 
@@ -475,7 +477,31 @@ export default function AdminDashboard() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [openIds, setOpenIds] = useState(() => new Set());
+  const [theme, setTheme] = useState("dark");
   const didAutoOpen = useRef(false);
+
+  // The inline script in app/admin/page.jsx already applied the stored theme
+  // before paint; this keeps React in sync with whatever it chose.
+  useEffect(() => {
+    const applied = document.documentElement.dataset.theme;
+    setTheme(applied === "light" ? "light" : "dark");
+  }, []);
+
+  const toggleTheme = () => {
+    setTheme((current) => {
+      const next = current === "dark" ? "light" : "dark";
+
+      document.documentElement.dataset.theme = next;
+
+      try {
+        window.localStorage.setItem(ADMIN_THEME_KEY, next);
+      } catch {
+        // Private mode / blocked storage: the toggle still works for this visit.
+      }
+
+      return next;
+    });
+  };
 
   const goToLogin = useCallback(() => {
     router.replace("/admin/login");
@@ -556,18 +582,57 @@ export default function AdminDashboard() {
     <>
       <style>{BASE_STYLES}</style>
       <style>{STYLES}</style>
+      <style>{LOGO_STYLES}</style>
 
       <main className="admin-shell dash">
+        <div className="admin-aura" aria-hidden="true">
+          <span className="aura-one" />
+          <span className="aura-two" />
+          <span className="aura-three" />
+          <span className="aura-grid" />
+        </div>
+
         <div className="dash-inner">
           <header className="admin-topbar">
             <div className="brand">
-              <span className="brand-mark" aria-hidden="true" />
+              <Logo size={40} />
               <div>
                 <p className="brand-name">Maddoxx Cup</p>
                 <h1>Registrations</h1>
               </div>
             </div>
             <div className="topbar-actions">
+              <button
+                type="button"
+                className="btn theme-toggle"
+                onClick={toggleTheme}
+                aria-pressed={theme === "light"}
+                aria-label={
+                  theme === "light"
+                    ? "Switch to dark mode"
+                    : "Switch to light mode"
+                }
+                title={
+                  theme === "light"
+                    ? "Switch to dark mode"
+                    : "Switch to light mode"
+                }
+              >
+                <span className="theme-icon" aria-hidden="true">
+                  <svg className="theme-sun" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="4.2" />
+                    <path d="M12 2.6v2.4M12 19v2.4M2.6 12h2.4M19 12h2.4M5.4 5.4l1.7 1.7M16.9 16.9l1.7 1.7M18.6 5.4l-1.7 1.7M7.1 16.9l-1.7 1.7" />
+                  </svg>
+                  <svg className="theme-moon" viewBox="0 0 24 24">
+                    <path d="M20.2 14.6A8.4 8.4 0 0 1 9.4 3.8a8.6 8.6 0 1 0 10.8 10.8Z" />
+                  </svg>
+                </span>
+                <span className="theme-label">
+                  <span className="theme-label-dark">Dark</span>
+                  <span className="theme-label-light">Light</span>
+                </span>
+              </button>
+
               <button
                 type="button"
                 className="btn"
@@ -649,6 +714,8 @@ export default function AdminDashboard() {
 
 const STYLES = `
   .dash-inner {
+    position: relative;
+    z-index: 1;
     max-width: 1180px;
     margin: 0 auto;
   }
@@ -669,14 +736,6 @@ const STYLES = `
     display: flex;
     align-items: center;
     gap: 14px;
-  }
-
-  .brand-mark {
-    width: 38px;
-    height: 38px;
-    border-radius: 11px;
-    background: linear-gradient(145deg, #4b5a85, #2c3550);
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
   }
 
   .brand-name {
@@ -742,6 +801,72 @@ const STYLES = `
 
   .btn-icon.spin {
     animation: spin 800ms linear infinite;
+  }
+
+  /* ---------- Theme toggle ---------- */
+  .theme-toggle {
+    padding-right: 15px;
+  }
+
+  .theme-icon {
+    position: relative;
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    flex: none;
+  }
+
+  .theme-icon svg {
+    position: absolute;
+    inset: 0;
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: transform 520ms var(--ease), opacity 260ms ease;
+  }
+
+  .theme-sun {
+    transform: rotate(0deg) scale(1);
+    opacity: 1;
+  }
+
+  .theme-moon {
+    transform: rotate(-90deg) scale(0.35);
+    opacity: 0;
+  }
+
+  [data-theme="light"] .theme-sun {
+    transform: rotate(90deg) scale(0.35);
+    opacity: 0;
+  }
+
+  [data-theme="light"] .theme-moon {
+    transform: rotate(0deg) scale(1);
+    opacity: 1;
+  }
+
+  .theme-label {
+    display: inline-block;
+    min-width: 34px;
+    text-align: left;
+  }
+
+  /* Both labels are always rendered so the text matches the pre-paint theme
+     instead of flickering from "Dark" to "Light" after hydration. */
+  .theme-label-light {
+    display: none;
+  }
+
+  [data-theme="light"] .theme-label-dark {
+    display: none;
+  }
+
+  [data-theme="light"] .theme-label-light {
+    display: inline;
   }
 
   /* ---------- Summary ---------- */
@@ -1317,5 +1442,71 @@ const STYLES = `
     .team-body { padding: 4px 14px 18px; }
 
     .chart { padding: 8px 6px 6px; }
+  }
+
+  /* ---------- Light theme touch-ups ----------
+     Surfaces that use literal dark colors instead of variables. */
+  [data-theme="light"] .chart {
+    background: #ffffff;
+  }
+
+  [data-theme="light"] .grid-line {
+    stroke: #e3e8f1;
+  }
+
+  [data-theme="light"] .hover-line {
+    stroke: #c7cfdd;
+  }
+
+  [data-theme="light"] .axis-sub-label {
+    fill: #8b93a3;
+  }
+
+  [data-theme="light"] .dot {
+    stroke: #ffffff;
+  }
+
+  [data-theme="light"] .tooltip rect {
+    fill: #ffffff;
+    stroke: #c7cfdd;
+  }
+
+  [data-theme="light"] .dash th {
+    background: #f5f7fb;
+  }
+
+  [data-theme="light"] .dash tbody tr:hover td,
+  [data-theme="light"] .team-toggle:hover {
+    background: rgba(20, 30, 50, 0.035);
+  }
+
+  [data-theme="light"] .team-card.is-open {
+    border-color: var(--border-strong);
+    box-shadow: 0 18px 40px -26px rgba(23, 32, 50, 0.3);
+  }
+
+  [data-theme="light"] .team-card.is-open .team-avatar {
+    background: #dfe6f7;
+    color: #33477e;
+  }
+
+  [data-theme="light"] .btn:hover:not(:disabled) {
+    border-color: var(--border-strong);
+  }
+
+  [data-theme="light"] .captain-badge {
+    background: rgba(141, 106, 44, 0.12);
+  }
+
+  [data-theme="light"] .skeleton {
+    background:
+      linear-gradient(
+        100deg,
+        transparent 30%,
+        rgba(20, 30, 50, 0.06) 50%,
+        transparent 70%
+      ),
+      var(--surface);
+    background-size: 220% 100%;
   }
 `;

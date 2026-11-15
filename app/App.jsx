@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Logo, { LOGO_STYLES } from "./Logo";
 
 const TOURNAMENT = "MADDOXX CUP";
 const TITLE = "MADDOXX CUP";
@@ -551,6 +552,7 @@ export default function App() {
   return (
     <>
       <style>{STYLES}</style>
+      <style>{LOGO_STYLES}</style>
 
       <div className="maddoxx-page">
         <div className="background" ref={backgroundRef} aria-hidden="true">
@@ -563,6 +565,8 @@ export default function App() {
 
         <header className="hero">
           <div className="hero-inner">
+            <Logo size={76} className="hero-logo" />
+
             <p className="hero-kicker">Official tournament registration</p>
 
             <h1 className="hero-title">
@@ -1328,6 +1332,10 @@ button:disabled {
   margin: 0 auto;
   padding: 64px 24px 0;
   position: relative;
+}
+
+.hero-logo {
+  margin-bottom: 26px;
 }
 
 .hero-kicker {

@@ -10,7 +10,13 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    // public/admin-theme.js runs while the head is parsed, so the admin theme
+    // is applied before the first paint. It writes data-theme on <html>, which
+    // is why that attribute is allowed to differ from the server HTML.
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script src="/admin-theme.js" />
+      </head>
       <body>{children}</body>
     </html>
   );

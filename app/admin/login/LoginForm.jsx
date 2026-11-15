@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Logo, { LOGO_STYLES } from "../../Logo";
 import { BASE_STYLES, LOGIN_STYLES } from "../admin-styles";
 
 export default function LoginForm() {
@@ -49,46 +50,62 @@ export default function LoginForm() {
     <>
       <style>{BASE_STYLES}</style>
       <style>{LOGIN_STYLES}</style>
+      <style>{LOGO_STYLES}</style>
 
       <main className="admin-shell centered-shell">
-        <form className="login-card" onSubmit={handleSubmit}>
-          <div className="lock-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24">
-              <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" />
-              <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" />
-            </svg>
-          </div>
-          <p className="eyebrow">MADDOXX CUP</p>
-          <h1>Admin access</h1>
-          <p className="login-copy">
-            Enter the pass phrase to view registered teams and MMR charts.
-          </p>
+        <div className="admin-aura" aria-hidden="true">
+          <span className="aura-one" />
+          <span className="aura-two" />
+          <span className="aura-three" />
+          <span className="aura-grid" />
+        </div>
 
-          <label className="login-label" htmlFor="admin-passphrase">
-            Pass phrase
-          </label>
-          <input
-            id="admin-passphrase"
-            className="login-input"
-            type="password"
-            value={passphrase}
-            onChange={(event) => setPassphrase(event.target.value)}
-            placeholder="Enter pass phrase"
-            autoComplete="current-password"
-            autoFocus
-            required
-          />
+        <div className="login-stack">
+          <Logo size={64} />
 
-          {error ? (
-            <p className="form-error" role="alert">
-              {error}
+          <form className="login-card" onSubmit={handleSubmit}>
+            <div className="lock-mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" />
+                <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" />
+              </svg>
+            </div>
+            <p className="eyebrow">MADDOXX CUP</p>
+            <h1>Admin access</h1>
+            <p className="login-copy">
+              Enter the pass phrase to view registered teams and MMR charts.
             </p>
-          ) : null}
 
-          <button className="primary-button" type="submit" disabled={submitting}>
-            {submitting ? "Checking…" : "Unlock"}
-          </button>
-        </form>
+            <label className="login-label" htmlFor="admin-passphrase">
+              Pass phrase
+            </label>
+            <input
+              id="admin-passphrase"
+              className="login-input"
+              type="password"
+              value={passphrase}
+              onChange={(event) => setPassphrase(event.target.value)}
+              placeholder="Enter pass phrase"
+              autoComplete="current-password"
+              autoFocus
+              required
+            />
+
+            {error ? (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            ) : null}
+
+            <button
+              className="primary-button"
+              type="submit"
+              disabled={submitting}
+            >
+              {submitting ? "Checking…" : "Unlock"}
+            </button>
+          </form>
+        </div>
       </main>
     </>
   );

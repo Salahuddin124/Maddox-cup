@@ -177,6 +177,75 @@ function Caret() {
   return <span className="type-caret" aria-hidden="true" />;
 }
 
+// Registration closes at the end of 22 November 2026, Pakistan time (UTC+5).
+// The offset is explicit so every visitor counts down to the same moment.
+const REGISTRATION_DEADLINE = "2026-11-22T23:59:59+05:00";
+const DEADLINE_LABEL = "22 November 2026";
+
+const COUNTDOWN_UNITS = [
+  ["days", "Days"],
+  ["hours", "Hours"],
+  ["minutes", "Minutes"],
+  ["seconds", "Seconds"],
+];
+
+function Countdown() {
+  const [remaining, setRemaining] = useState(null);
+
+  useEffect(() => {
+    const target = Date.parse(REGISTRATION_DEADLINE);
+
+    const update = () => {
+      setRemaining(Math.max(0, target - Date.now()));
+    };
+
+    update();
+    const timer = window.setInterval(update, 1000);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const closed = remaining === 0;
+  const parts =
+    remaining === null
+      ? null
+      : {
+          days: Math.floor(remaining / 86400000),
+          hours: Math.floor((remaining / 3600000) % 24),
+          minutes: Math.floor((remaining / 60000) % 60),
+          seconds: Math.floor((remaining / 1000) % 60),
+        };
+
+  return (
+    <section className="countdown">
+      <div className="countdown-head">
+        <span className="countdown-label">Registration closes</span>
+        <span className="countdown-date">{DEADLINE_LABEL}</span>
+      </div>
+
+      <p className="sr-only">
+        Registration closes on {DEADLINE_LABEL} at 11:59 PM Pakistan time.
+      </p>
+
+      {closed ? (
+        <p className="countdown-closed">Registration is closed.</p>
+      ) : (
+        <div className="countdown-grid" aria-hidden="true">
+          {COUNTDOWN_UNITS.map(([key, label]) => (
+            <div className="countdown-unit" key={key}>
+              <span className="countdown-value">
+                {parts ? String(parts[key]).padStart(2, "0") : "--"}
+              </span>
+              <span className="countdown-unit-label">{label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+
 export default function App() {
   const [teamName, setTeamName] = useState(INITIAL_TEAM_NAME);
   const [players, setPlayers] = useState(() =>
@@ -590,6 +659,8 @@ export default function App() {
                 </span>
               </span>
             </p>
+
+            <Countdown />
           </div>
         </header>
 
@@ -1381,6 +1452,115 @@ button:disabled {
   line-height: 1.6;
 }
 
+.countdown {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 12px;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 32px;
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background:
+    radial-gradient(130% 170% at 10% 0%, rgba(200, 16, 46, 0.24), transparent 62%),
+    rgba(9, 15, 28, 0.62);
+  box-shadow:
+    0 22px 48px -30px rgba(0, 0, 0, 0.95),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+  animation: countdownIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
+}
+
+.countdown-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.countdown-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #aeb9cf;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.countdown-label::before {
+  content: '';
+  width: 18px;
+  height: 2px;
+  flex: none;
+  border-radius: 2px;
+  background: #c8102e;
+}
+
+.countdown-date {
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.countdown-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(58px, 1fr));
+  gap: 8px;
+}
+
+.countdown-unit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 9px 8px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+}
+
+.countdown-value {
+  color: #ffffff;
+  font-family: 'Barlow Condensed', 'Arial Narrow', Impact, sans-serif;
+  font-size: clamp(26px, 4.4vw, 34px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  text-shadow: 0 0 20px rgba(200, 16, 46, 0.55);
+}
+
+.countdown-unit-label {
+  margin-top: 6px;
+  color: #93a1ba;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.countdown-closed {
+  margin: 0;
+  color: #ffb3c0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+@keyframes countdownIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 .hero-phantom {
   visibility: hidden;
 }
@@ -2090,6 +2270,30 @@ button:disabled {
   .hero-subtitle {
     margin-top: 14px;
     max-width: 100%;
+  }
+
+  .countdown {
+    margin-top: 24px;
+    padding: 13px 14px;
+    gap: 10px;
+  }
+
+  .countdown-grid {
+    grid-template-columns: repeat(4, minmax(48px, 1fr));
+    gap: 6px;
+  }
+
+  .countdown-unit {
+    padding: 8px 4px 7px;
+  }
+
+  .countdown-value {
+    font-size: 26px;
+  }
+
+  .countdown-unit-label {
+    font-size: 9px;
+    letter-spacing: 0.1em;
   }
 
   .main {

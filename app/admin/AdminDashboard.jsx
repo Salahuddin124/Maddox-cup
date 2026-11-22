@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Logo, { LOGO_STYLES } from "../Logo";
 import { BASE_STYLES } from "./admin-styles";
+import MatchSchemes from "./MatchSchemes";
 import { ADMIN_THEME_KEY } from "./theme";
 
 const NUMBER_FORMAT = new Intl.NumberFormat("en-US");
@@ -15,6 +16,11 @@ const ROLE_LABELS = {
   "soft-support": "Soft Support (Pos 4)",
   "hard-support": "Hard Support (Pos 5)",
 };
+
+const DASH_TABS = [
+  { id: "teams", label: "Team List" },
+  { id: "schemes", label: "Match Schemes" },
+];
 
 function roleLabel(value) {
   return ROLE_LABELS[value] ?? value ?? "—";
@@ -478,6 +484,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [openIds, setOpenIds] = useState(() => new Set());
   const [theme, setTheme] = useState("dark");
+  const [activeTab, setActiveTab] = useState("teams");
   const didAutoOpen = useRef(false);
 
   // The inline script in app/admin/page.jsx already applied the stored theme
@@ -501,6 +508,27 @@ export default function AdminDashboard() {
 
       return next;
     });
+  };
+
+  const handleTabKeyDown = (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+      return;
+    }
+
+    event.preventDefault();
+    const index = DASH_TABS.findIndex((tab) => tab.id === activeTab);
+    let next = index;
+
+    if (event.key === "ArrowRight") next = (index + 1) % DASH_TABS.length;
+    if (event.key === "ArrowLeft") {
+      next = (index - 1 + DASH_TABS.length) % DASH_TABS.length;
+    }
+    if (event.key === "Home") next = 0;
+    if (event.key === "End") next = DASH_TABS.length - 1;
+
+    const nextId = DASH_TABS[next].id;
+    setActiveTab(nextId);
+    document.getElementById(`dash-tab-${nextId}`)?.focus();
   };
 
   const goToLogin = useCallback(() => {
@@ -660,50 +688,94 @@ export default function AdminDashboard() {
             </div>
           </header>
 
+          <div
+            className="dash-tabs"
+            role="tablist"
+            aria-label="Dashboard sections"
+            onKeyDown={handleTabKeyDown}
+          >
+            {DASH_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                id={`dash-tab-${tab.id}`}
+                className={`dash-tab ${activeTab === tab.id ? "is-active" : ""}`}
+                aria-selected={activeTab === tab.id}
+                aria-controls={`dash-panel-${tab.id}`}
+                tabIndex={activeTab === tab.id ? 0 : -1}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
           <section className="summary" aria-label="Registration summary">
             <SummaryCard label="Teams" value={teams.length} format={false} />
             <SummaryCard label="Players" value={totalPlayers} format={false} />
             <SummaryCard label="Average MMR" value={overallAverage} />
           </section>
 
-          {error ? (
-            <p className="form-error" role="alert">
-              {error}
-            </p>
-          ) : null}
+          {activeTab === "teams" ? (
+            <div
+              role="tabpanel"
+              id="dash-panel-teams"
+              aria-labelledby="dash-tab-teams"
+            >
+              {error ? (
+                <p className="form-error" role="alert">
+                  {error}
+                </p>
+              ) : null}
 
-          {teams.length > 1 ? (
-            <div className="list-toolbar">
-              <p>
-                {teams.length} teams
-                <span className="toolbar-sub">
-                  {" "}
-                  — {openIds.size} expanded
-                </span>
-              </p>
-              <button type="button" className="btn btn-quiet" onClick={toggleAll}>
-                {allOpen ? "Collapse all" : "Expand all"}
-              </button>
+              {teams.length > 1 ? (
+                <div className="list-toolbar">
+                  <p>
+                    {teams.length} teams
+                    <span className="toolbar-sub">
+                      {" "}
+                      — {openIds.size} expanded
+                    </span>
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn-quiet"
+                    onClick={toggleAll}
+                  >
+                    {allOpen ? "Collapse all" : "Expand all"}
+                  </button>
+                </div>
+              ) : null}
+
+              {loading && teams.length === 0 ? (
+                <SkeletonList />
+              ) : teams.length === 0 ? (
+                <p className="empty-state">
+                  No registrations yet. New teams will appear here as they sign
+                  up.
+                </p>
+              ) : (
+                <div className="team-list">
+                  {teams.map((team, index) => (
+                    <TeamCard
+                      key={team.id}
+                      team={team}
+                      index={index}
+                      open={openIds.has(team.id)}
+                      onToggle={() => toggleTeam(team.id)}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
-          ) : null}
-
-          {loading && teams.length === 0 ? (
-            <SkeletonList />
-          ) : teams.length === 0 ? (
-            <p className="empty-state">
-              No registrations yet. New teams will appear here as they sign up.
-            </p>
           ) : (
-            <div className="team-list">
-              {teams.map((team, index) => (
-                <TeamCard
-                  key={team.id}
-                  team={team}
-                  index={index}
-                  open={openIds.has(team.id)}
-                  onToggle={() => toggleTeam(team.id)}
-                />
-              ))}
+            <div
+              role="tabpanel"
+              id="dash-panel-schemes"
+              aria-labelledby="dash-tab-schemes"
+            >
+              <MatchSchemes teams={teams} />
             </div>
           )}
         </div>
@@ -801,6 +873,47 @@ const STYLES = `
 
   .btn-icon.spin {
     animation: spin 800ms linear infinite;
+  }
+
+  /* ---------- Dashboard tabs ---------- */
+  .dash-tabs {
+    display: inline-flex;
+    gap: 4px;
+    margin: 0 0 24px;
+    padding: 4px;
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    background: var(--surface);
+  }
+
+  .dash-tab {
+    padding: 9px 18px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 180ms ease, color 180ms ease,
+      box-shadow 180ms ease;
+  }
+
+  .dash-tab:hover {
+    color: var(--text);
+  }
+
+  .dash-tab.is-active {
+    background: var(--surface-2);
+    color: var(--text);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+
+  .dash-tab:focus-visible {
+    outline: 2px solid var(--current);
+    outline-offset: 2px;
   }
 
   /* ---------- Theme toggle ---------- */
@@ -1422,6 +1535,11 @@ const STYLES = `
 
   @media (max-width: 720px) {
     .summary { grid-template-columns: 1fr; }
+
+    .dash-tab {
+      padding: 9px 12px;
+      font-size: 12px;
+    }
 
     .team-toggle {
       flex-wrap: wrap;

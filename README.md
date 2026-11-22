@@ -1,9 +1,10 @@
 # MADDOXX CUP
 
-Dota 2 tournament registration for **MADDOXX CUP**, built with Next.js. The entire
-registration interface lives in `app/App.jsx` as a single client component with
-its CSS in a `<style>` tag, as requested. Submissions are validated again on the
-server and saved to a Neon Postgres database.
+Dota 2 tournament site for **MADDOXX CUP**, built with Next.js. Registration is
+now closed: the public page in `app/App.jsx` shows a closed notice and
+"Match Schedules — Coming soon". The registration form and its `/api/register`
+endpoint have been removed. Existing teams remain readable in the admin
+dashboard.
 
 ## Run locally
 
@@ -34,26 +35,16 @@ npm run build
 npm start
 ```
 
-## Demo prefill
+## Registration status
 
-For quick testing, the form starts with a complete sample roster. The flag is in
-`app/App.jsx`:
-
-```js
-const PREFILL_DEMO_DATA = false;
-```
-
-- The flag is `false` in the committed app so the form opens empty for real
-  registrations. Set it to `true` only for local testing.
-- The prefilled roster has all 32 fields filled, five unique roles, valid MMR
-  values, and placeholder Steam/Discord values.
-- You can edit any field before submitting. After submitting, “Edit roster”
-  returns the edited values.
+Registration closed on 22 November 2026. The public page no longer collects
+teams and `/api/register` has been deleted; only the admin dashboard reads the
+existing registration data.
 
 ## Database
 
-Submissions are stored in **Neon Postgres**. The app connects with the `pg`
-driver using `DATABASE_URL`:
+Previously submitted teams are stored in **Neon Postgres**. The admin API
+connects with the `pg` driver using `DATABASE_URL`:
 
 ```bash
 # .env.local
@@ -61,8 +52,8 @@ DATABASE_URL=postgresql://user:password@host/db?sslmode=require
 ```
 
 The `teams` and `players` tables are created automatically the first time the
-API is used, so no manual migration step is required. Use the pooled connection
-string for the deployed app.
+admin API is used, so no manual migration step is required. Use the pooled
+connection string for the deployed app.
 
 ## Viewing submissions
 
@@ -99,121 +90,12 @@ WHERE p.team_id = 1
 ORDER BY p.slot;
 ```
 
-## One registration per browser
+## Legacy registration data
 
-Each successful submission sets an `HttpOnly`, `SameSite=Lax` cookie named
-`maddoxx_browser` that lasts one year. Only a SHA-256 hash of that random token is
-stored in `teams.browser_token_hash`, which has a unique index.
-
-- On page load the client calls `GET /api/register`. If the cookie maps to a
-  saved team, the success screen is shown instead of the form.
-- If that browser submits again through “Edit roster”, the existing row and its
-  five players are updated in place in one transaction. The reference stays the
-  same and a second team is never inserted.
-- The unique index also prevents a duplicate row if two tabs submit at the same
-  time; the losing request retries and updates the same team.
-- Identity is per browser profile. Clearing cookies, using private browsing, or
-  using a different browser will look like a new registration. Preventing that
-  requires user accounts, which this project intentionally does not have.
-
-### Schema
-
-`teams`
-
-| Column               | Type        | Notes                                              |
-| -------------------- | ----------- | -------------------------------------------------- |
-| `id`                 | INTEGER     | Primary key, generated identity                    |
-| `reference`          | TEXT        | Unique public registration code                    |
-| `tournament`         | TEXT        | Tournament name                                    |
-| `team_name`          | TEXT        | Registered team name                               |
-| `browser_token_hash` | TEXT        | SHA-256 of the browser cookie; unique when present |
-| `created_at`         | TIMESTAMPTZ | Creation time, defaults to `now()`                 |
-
-`players`
-
-| Column         | Type        | Notes                                      |
-| -------------- | ----------- | ------------------------------------------ |
-| `id`           | INTEGER     | Primary key, generated identity            |
-| `team_id`      | INTEGER     | Foreign key to `teams.id` (cascade delete) |
-| `slot`         | INTEGER     | Player number, 1–5 (slot 1 is the captain) |
-| `in_game_name` | TEXT        | In-game name                               |
-| `steam_id`     | TEXT        | Steam ID number or profile link            |
-| `phone`        | TEXT        | Captain's phone number (slot 1 only)       |
-| `role`         | TEXT        | One of the five tournament roles           |
-| `current_mmr`  | INTEGER     | 0 or more                                  |
-| `peak_mmr`     | INTEGER     | 0 or more, never below current MMR         |
-| `discord_url`  | TEXT        | Discord username, ID, or profile link      |
-
-## API
-
-`POST /api/register`
-
-```json
-{
-  "tournament": "MADDOXX CUP",
-  "teamName": "Nightfall Five",
-  "players": [
-    {
-      "id": 1,
-      "ign": "Player name",
-      "steamId": "76561198000000000",
-      "phone": "+1 555 010 0000",
-      "role": "carry",
-      "currentMmr": 6200,
-      "peakMmr": 7100,
-      "discord": "maddoxx"
-    }
-  ]
-}
-```
-
-The API requires exactly five players, validates every field, rejects peak MMR
-below current MMR, and writes the team and its roster in one transaction. Player
-1 is the captain: `phone` is required there and optional for players 2–5. A
-`steamId` may be a SteamID64/friend number or a profile link with or without
-`https://` (for example `steamcommunity.com/id/name`). A first-time submission
-returns `201`:
-
-```json
-{ "ok": true, "id": 1, "reference": "MC-8F3A92C1D4", "updated": false }
-```
-
-A submission from a browser that already registered updates that team instead
-and returns `200` with the same `id` and `reference`:
-
-```json
-{ "ok": true, "id": 1, "reference": "MC-8F3A92C1D4", "updated": true }
-```
-
-`GET /api/register` returns the registration attached to the browser cookie, so
-the UI can restore the success screen on reload:
-
-```json
-{
-  "ok": true,
-  "registered": true,
-  "registration": {
-    "id": 1,
-    "reference": "MC-8F3A92C1D4",
-    "teamName": "Nightfall Five",
-    "createdAt": "2026-11-12T16:40:12.819Z",
-    "players": [
-      {
-        "id": 1,
-        "ign": "Player name",
-        "steamId": "76561198000000000",
-        "phone": "+1 555 010 0000",
-        "role": "carry",
-        "currentMmr": 6200,
-        "peakMmr": 7100,
-        "discord": "maddoxx"
-      }
-    ]
-  }
-}
-```
-
-Without a cookie, `GET` returns `{ "ok": true, "registered": false }`.
+Registrations created before the closure are kept in the `teams` and `players`
+tables below. They are read-only now: the browser cookie flow
+(`maddoxx_browser`), the preview/success screen and both `/api/register` methods
+were removed along with the form.
 
 ## Admin dashboard
 
@@ -254,17 +136,14 @@ Admin API:
    `ADMIN_JWT_SECRET` for the admin dashboard.
 4. Deploy.
 
-Registrations are stored in Neon, so they survive deployments and are shared
-across all function instances.
+The saved registrations are stored in Neon, so they survive deployments and are
+shared across all function instances.
 
 ## Notes
 
-- `DATABASE_URL` is required in production. Without it the API returns `500` and
-  logs a clear error instead of losing submissions.
-- The client still logs the `{ tournament, teamName, players }` payload to the
-  console and only shows the success screen after the database write succeeds.
-- Client and server both validate the roster. Duplicate roles produce a warning
-  in the UI but are not blocked by the database.
-- Steam IDs must be a number (SteamID64/friend code) or a profile link; the
-  `https://` prefix is optional. Captain phone numbers allow `+`, digits,
-  spaces, `()`, `.`, and `-`, with 7–15 digits.
+- `DATABASE_URL` is required for the admin dashboard. Without it `/api/admin`
+  returns `500` with a clear error in the logs.
+- The public page is static and makes no API calls.
+- The registration form, browser cookie flow and `/api/register` endpoint were
+  removed when registration closed on 22 November 2026.
+- Existing Neon data is untouched; no teams or players were deleted.

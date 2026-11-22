@@ -1,0 +1,224 @@
+
+/* =========================================
+   BRACKET BOARD - BASE LAYOUT
+   ========================================= */
+
+.bracket-board {
+  position: relative;
+  isolation: isolate;
+  overflow: visible;
+}
+
+/* =========================================
+   SVG CONNECTOR OVERLAY
+   ========================================= */
+
+.bracket-connections {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Keep bracket content above connectors */
+.bracket-section {
+  position: relative;
+  z-index: 1;
+}
+
+.bracket-round {
+  position: relative;
+  z-index: 1;
+}
+
+.bracket-match {
+  position: relative;
+  z-index: 2;
+}
+
+.bracket-champion-section {
+  position: relative;
+  z-index: 2;
+}
+
+/* =========================================
+   CONNECTOR OUTER GLOW
+   ========================================= */
+
+.bracket-wire-glow {
+  fill: none;
+  stroke: rgba(0, 153, 255, 0.7);
+  stroke-width: 8px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+
+  filter:
+    drop-shadow(0 0 3px rgba(0, 174, 255, 0.95))
+    drop-shadow(0 0 7px rgba(0, 119, 255, 0.8))
+    drop-shadow(0 0 13px rgba(0, 90, 255, 0.45));
+
+  opacity: 0.8;
+}
+
+/* =========================================
+   CONNECTOR INNER CORE
+   ========================================= */
+
+.bracket-wire-core {
+  fill: none;
+  stroke: #79dcff;
+  stroke-width: 2px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+
+  filter:
+    drop-shadow(0 0 2px rgba(125, 220, 255, 1))
+    drop-shadow(0 0 5px rgba(0, 174, 255, 0.9));
+
+  opacity: 1;
+}
+
+/* =========================================
+   REMOVE OLD CSS CONNECTORS
+   ========================================= */
+
+.bracket-connector {
+  display: none !important;
+}
+
+.bracket-round.has-incoming .bracket-match::before {
+  content: none !important;
+  display: none !important;
+}
+
+.bracket-round .bracket-match::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* =========================================
+   DOUBLE ELIMINATION BOARD
+   ========================================= */
+
+.bracket-double-board {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 36px;
+
+  width: max-content;
+  min-width: max-content;
+  overflow: visible;
+}
+
+/* =========================================
+   UPPER / LOWER BRACKET LANES
+   ========================================= */
+
+.double-bracket-lanes {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 44px;
+
+  width: 100%;
+  min-width: max-content;
+}
+
+.double-bracket-lane {
+  position: relative;
+  width: 100%;
+  min-width: max-content;
+}
+
+/* Each section contains rounds arranged horizontally */
+.double-bracket-lane .bracket-section-rounds {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--column-gap, 34px);
+
+  width: max-content;
+}
+
+/* Prevent rounds from shrinking */
+.double-bracket-lane .bracket-round {
+  flex-shrink: 0;
+}
+
+/* Upper bracket styling */
+.upper-lane > .bracket-section > .bracket-section-label {
+  color: #55c9ff;
+}
+
+/* Lower bracket styling */
+.lower-lane > .bracket-section > .bracket-section-label {
+  color: #c18aff;
+}
+
+/* =========================================
+   GRAND FINAL
+   ========================================= */
+
+.double-grand-final {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+
+  width: 100%;
+  min-width: max-content;
+}
+
+.double-grand-final .bracket-section {
+  min-width: 220px;
+}
+
+.double-grand-final .bracket-round {
+  flex-shrink: 0;
+}
+
+/* =========================================
+   CHAMPION
+   ========================================= */
+
+.bracket-double-board > .bracket-champion-section {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+
+  width: 100%;
+}
+
+/* =========================================
+   DOUBLE ELIMINATION CONNECTOR LAYER
+   ========================================= */
+
+.bracket-double-board .bracket-connections {
+  z-index: 0;
+}
+
+.bracket-double-board .double-bracket-lanes,
+.bracket-double-board .double-grand-final,
+.bracket-double-board > .bracket-champion-section {
+  position: relative;
+  z-index: 1;
+}
+
+/* =========================================
+   RESPONSIVE / SCROLL SUPPORT
+   ========================================= */
+
+.bracket-double-board,
+.bracket-double-board .bracket-section,
+.bracket-double-board .bracket-round {
+  overflow: visible;
+}
+
+.bracket-double-board .bracket-section,
+.bracket-double-board .bracket-round {
+  flex-shrink: 0;
+}

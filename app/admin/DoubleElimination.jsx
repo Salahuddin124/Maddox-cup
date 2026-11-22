@@ -1,7 +1,11 @@
-// Double Elimination bracket. This component owns the upper/lower/grand-final
-// layout; every value and callback arrives through props from MatchSchemes.
 
-import { BracketSection, ChampionCard } from "./BracketParts";
+import { useRef } from "react";
+
+import {
+  BracketSection,
+  BracketConnections,
+  ChampionCard,
+} from "./BracketParts";
 
 export default function DoubleElimination({
   sections = [],
@@ -16,6 +20,8 @@ export default function DoubleElimination({
   onDragStart,
   onDrop,
 }) {
+  const boardRef = useRef(null);
+
   const roundProps = {
     boardSlots,
     teamsById,
@@ -26,15 +32,75 @@ export default function DoubleElimination({
     onDrop,
   };
 
-  const upper = sections.find((section) => section.key === "upper");
-  const rest = sections.filter((section) => section.key !== "upper");
+  const upper = sections.find(
+    (section) => section.key === "upper",
+  );
+
+  const lower = sections.find(
+    (section) => section.key === "lower",
+  );
+
+  const grandFinal = sections.find(
+    (section) =>
+      section.key === "grand-final" ||
+      section.key === "final",
+  );
+
+  const otherSections = sections.filter(
+    (section) =>
+      !["upper", "lower", "grand-final", "final"].includes(
+        section.key,
+      ),
+  );
 
   return (
-    <div className="bracket-board" data-format="double">
-      {upper ? <BracketSection section={upper} {...roundProps} /> : null}
-      {rest.map((section) => (
-        <BracketSection key={section.key} section={section} {...roundProps} />
-      ))}
+    <div
+      className="bracket-board bracket-double-board"
+      data-format="double"
+      ref={boardRef}
+    >
+      <BracketConnections boardRef={boardRef} />
+
+      <div className="double-bracket-lanes">
+        {upper && (
+          <div className="double-bracket-lane upper-lane">
+            <BracketSection
+              section={upper}
+              {...roundProps}
+            />
+          </div>
+        )}
+
+        {lower && (
+          <div className="double-bracket-lane lower-lane">
+            <BracketSection
+              section={lower}
+              {...roundProps}
+            />
+          </div>
+        )}
+
+        {otherSections.map((section) => (
+          <div
+            className="double-bracket-lane"
+            key={section.key}
+          >
+            <BracketSection
+              section={section}
+              {...roundProps}
+            />
+          </div>
+        ))}
+      </div>
+
+      {grandFinal && (
+        <div className="double-grand-final">
+          <BracketSection
+            section={grandFinal}
+            {...roundProps}
+          />
+        </div>
+      )}
 
       <ChampionCard
         champion={champion}

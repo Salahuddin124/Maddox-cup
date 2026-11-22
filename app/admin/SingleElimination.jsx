@@ -1,7 +1,11 @@
-// Single Elimination bracket. This component owns only the single-bracket
-// layout; every value and callback arrives through props from MatchSchemes.
 
-import { BracketSection, ChampionCard } from "./BracketParts";
+import { useRef } from "react";
+
+import {
+  BracketSection,
+  BracketConnections,
+  ChampionCard,
+} from "./BracketParts";
 
 export default function SingleElimination({
   sections = [],
@@ -16,6 +20,8 @@ export default function SingleElimination({
   onDragStart,
   onDrop,
 }) {
+  const boardRef = useRef(null);
+
   const roundProps = {
     boardSlots,
     teamsById,
@@ -27,9 +33,19 @@ export default function SingleElimination({
   };
 
   return (
-    <div className="bracket-board" data-format="single">
+    <div
+      className="bracket-board"
+      data-format="single"
+      ref={boardRef}
+    >
+      <BracketConnections boardRef={boardRef} />
+
       {sections.map((section) => (
-        <BracketSection key={section.key} section={section} {...roundProps} />
+        <BracketSection
+          key={section.key}
+          section={section}
+          {...roundProps}
+        />
       ))}
 
       <ChampionCard

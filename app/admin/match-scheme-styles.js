@@ -833,4 +833,59 @@ export const MATCH_SCHEME_STYLES = `
       animation-duration: .01ms !important;
     }
   }
+    .bracket-board {
+  position: relative;
+  isolation: isolate;
+  overflow: visible;
+}
+
+/* Connector layer */
+.bracket-connections {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Keep match cards above the connector layer. */
+.bracket-section,
+.bracket-champion-section {
+  position: relative;
+  z-index: 1;
+}
+
+/* Outer electric-blue glow */
+.bracket-wire-glow {
+  fill: none;
+  stroke: rgba(0, 174, 255, 0.65);
+  stroke-width: 8px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 4px rgba(0, 174, 255, 0.9))
+          drop-shadow(0 0 9px rgba(0, 115, 255, 0.65));
+  opacity: 0.75;
+}
+
+/* Sharp inner line */
+.bracket-wire-core {
+  fill: none;
+  stroke: #63d7ff;
+  stroke-width: 2px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 3px rgba(75, 195, 255, 0.95));
+}
+
+/* Disable the old CSS-generated connector system. */
+.bracket-connector {
+  display: none !important;
+}
+
+.bracket-round.has-incoming .bracket-match::before {
+  content: none !important;
+  display: none !important;
+}
 `;

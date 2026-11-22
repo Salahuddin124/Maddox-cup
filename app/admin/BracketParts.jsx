@@ -1,5 +1,6 @@
-// Shared presentational pieces for both elimination formats. Everything is
-// passed in through props so the format components stay pure and reusable.
+
+import { useEffect, useState } from "react";
+import "./bracket-connections.css";
 
 const NUMBER_FORMAT = new Intl.NumberFormat("en-US");
 
@@ -30,10 +31,17 @@ export function BracketSlot({
       {team ? (
         <>
           {isSeed ? (
-            <span className="bracket-slot-grip" aria-hidden="true">⠿</span>
+            <span className="bracket-slot-grip" aria-hidden="true">
+              ⠿
+            </span>
           ) : null}
+
           <span className="bracket-slot-name">{team.teamName}</span>
-          {isOut ? <span className="bracket-out-tag">OUT</span> : null}
+
+          {isOut ? (
+            <span className="bracket-out-tag">OUT</span>
+          ) : null}
+
           <button
             type="button"
             className={`bracket-win-btn ${isWinner ? "is-active" : ""}`}
@@ -54,6 +62,259 @@ export function BracketSlot({
   );
 }
 
+/**
+ * Draws SVG connectors based on the actual positions of match cards.
+ * Supports straight connections and two-to-one merge connections.
+ */
+export function BracketConnections({ boardRef }) {
+  const [paths, setPaths] = useState([]);
+  const [dimensions, setDimensions] = useState({
+    width: 0,
+    height: 0,
+  });
+
+  useEffect(() => {
+    const board = boardRef.current;
+    if (!board) return;
+
+    let animationFrame = 0;
+
+    const measure = () => {
+      cancelAnimationFrame(animationFrame);
+
+      animationFrame = requestAnimationFrame(() => {
+        const boardRect = board.getBoundingClientRect();
+
+        const width = Math.max(
+          board.scrollWidth,
+          board.clientWidth,
+        );
+
+        const height = Math.max(
+          board.scrollHeight,
+          board.clientHeight,
+        );
+
+        setDimensions((previous) => {
+          if (
+            previous.width === width &&
+            previous.height === height
+          ) {
+            return previous;
+          }
+
+          return { width, height };
+        });
+
+        const sections = new Map();
+
+        board
+          .querySelectorAll(".bracket-round[data-round-index]")
+          .forEach((roundElement) => {
+            const sectionKey = roundElement.dataset.sectionKey;
+
+            if (!sections.has(sectionKey)) {
+              sections.set(sectionKey, []);
+            }
+
+            sections.get(sectionKey).push(roundElement);
+          });
+
+        const nextPaths = [];
+
+        sections.forEach((rounds) => {
+          rounds.sort(
+            (a, b) =>
+              Number(a.dataset.roundIndex) -
+              Number(b.dataset.roundIndex),
+          );
+
+          rounds.forEach((sourceRound) => {
+            const connect = sourceRound.dataset.connect;
+
+            if (
+              connect !== "straight" &&
+              connect !== "merge"
+            ) {
+              return;
+            }
+
+            const sourceIndex = Number(
+              sourceRound.dataset.roundIndex,
+            );
+
+            const targetRound = rounds.find(
+              (round) =>
+                Number(round.dataset.roundIndex) === sourceIndex + 1,
+            );
+
+            if (!targetRound) return;
+
+            const sourceMatches = [
+              ...sourceRound.querySelectorAll(".bracket-match"),
+            ];
+
+            const targetMatches = [
+              ...targetRound.querySelectorAll(".bracket-match"),
+            ];
+
+            const incoming = new Map();
+
+            sourceMatches.forEach((sourceMatch, index) => {
+              const targetIndex =
+                connect === "merge"
+                  ? Math.floor(index / 2)
+                  : index;
+
+              const targetMatch = targetMatches[targetIndex];
+
+              if (!targetMatch) return;
+
+              if (!incoming.has(targetIndex)) {
+                incoming.set(targetIndex, {
+                  targetMatch,
+                  sources: [],
+                });
+              }
+
+              incoming.get(targetIndex).sources.push(sourceMatch);
+            });
+
+            incoming.forEach(({ targetMatch, sources }) => {
+              const targetRect = targetMatch.getBoundingClientRect();
+
+              const targetX =
+                targetRect.left -
+                boardRect.left +
+                board.scrollLeft;
+
+              const targetY =
+                targetRect.top +
+                targetRect.height / 2 -
+                boardRect.top +
+                board.scrollTop;
+
+              const sourcePositions = sources.map((source) => {
+                const rect = source.getBoundingClientRect();
+
+                return {
+                  x:
+                    rect.right -
+                    boardRect.left +
+                    board.scrollLeft,
+                  y:
+                    rect.top +
+                    rect.height / 2 -
+                    boardRect.top +
+                    board.scrollTop,
+                };
+              });
+
+              const sourceRight = Math.max(
+                ...sourcePositions.map((position) => position.x),
+              );
+
+              const middleX =
+                sourceRight + (targetX - sourceRight) / 2;
+
+              if (sourcePositions.length === 1) {
+                const source = sourcePositions[0];
+
+                nextPaths.push(
+                  `M ${source.x} ${source.y} H ${middleX} V ${targetY} H ${targetX}`,
+                );
+
+                return;
+              }
+
+              // Individual horizontal branches from source matches.
+              sourcePositions.forEach((source) => {
+                nextPaths.push(
+                  `M ${source.x} ${source.y} H ${middleX}`,
+                );
+              });
+
+              // Shared vertical junction.
+              const junctionYs = [
+                ...sourcePositions.map((position) => position.y),
+                targetY,
+              ];
+
+              nextPaths.push(
+                `M ${middleX} ${Math.min(...junctionYs)} V ${Math.max(...junctionYs)}`,
+              );
+
+              // Final horizontal segment into the target match.
+              nextPaths.push(
+                `M ${middleX} ${targetY} H ${targetX}`,
+              );
+            });
+          });
+        });
+
+        setPaths(nextPaths);
+      });
+    };
+
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(measure)
+        : null;
+
+    resizeObserver?.observe(board);
+
+    board
+      .querySelectorAll(".bracket-match")
+      .forEach((match) => resizeObserver?.observe(match));
+
+    const mutationObserver = new MutationObserver(measure);
+
+    mutationObserver.observe(board, {
+      childList: true,
+      subtree: true,
+    });
+
+    window.addEventListener("resize", measure);
+    board.addEventListener("scroll", measure);
+
+    measure();
+
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      resizeObserver?.disconnect();
+      mutationObserver.disconnect();
+      window.removeEventListener("resize", measure);
+      board.removeEventListener("scroll", measure);
+    };
+  }, [boardRef]);
+
+  return (
+   <svg
+  className="bracket-connections"
+  aria-hidden="true"
+  preserveAspectRatio="none"
+  viewBox={`0 0 ${dimensions.width || 1} ${dimensions.height || 1}`}
+  style={{
+    width: `${dimensions.width}px`,
+    height: `${dimensions.height}px`,
+  }}
+>
+      {paths.map((path, index) => (
+        <g key={index}>
+          <path
+            className="bracket-wire-glow"
+            d={path}
+          />
+          <path
+            className="bracket-wire-core"
+            d={path}
+          />
+        </g>
+      ))}
+    </svg>
+  );
+}
+
 export function BracketRound({
   round,
   roundIndex,
@@ -67,37 +328,51 @@ export function BracketRound({
   onDrop,
 }) {
   const next = section.rounds[roundIndex + 1];
-  const connect = round.connect ?? (
-    next
-      ? next.matches.length === round.matches.length ? "straight" : "merge"
-      : "none"
-  );
-  const merge = connect === "merge" && round.matches.length > 1;
-  const isSeedRound = section.key === "upper" && roundIndex === 0;
+
+  const connect =
+    round.connect ??
+    (next
+      ? next.matches.length === round.matches.length
+        ? "straight"
+        : "merge"
+      : "none");
+
+  const isSeedRound =
+    section.key === "upper" && roundIndex === 0;
 
   return (
-    <div className={`bracket-round ${roundIndex > 0 ? "has-incoming" : ""}`}>
+    <div
+      className={`bracket-round ${roundIndex > 0 ? "has-incoming" : ""}`}
+      data-section-key={section.key}
+      data-round-index={roundIndex}
+      data-connect={connect}
+    >
       <p className="bracket-round-label">{round.label}</p>
+
       {round.matches.map((match, matchIndex) => (
         <div
-          className={`bracket-match ${
-            merge
-              ? matchIndex % 2 === 0 ? "pair-start" : "pair-end"
-              : connect === "straight" ? "is-straight" : ""
-          }`}
+          className="bracket-match"
+          data-match-index={matchIndex}
           key={match.key}
         >
           {[0, 1].map((side) => {
             const slotKey = `${match.key}-${side}`;
             const teamId = boardSlots[slotKey];
+
             const team =
-              teamId === undefined ? null : teamsById.get(Number(teamId)) ?? null;
+              teamId === undefined
+                ? null
+                : teamsById.get(Number(teamId)) ?? null;
+
             const isWinner = Boolean(
               team &&
                 winners[match.key] !== undefined &&
                 Number(winners[match.key]) === Number(team.id),
             );
-            const isOut = Boolean(team && eliminated.has(Number(team.id)));
+
+            const isOut = Boolean(
+              team && eliminated.has(Number(team.id)),
+            );
 
             return (
               <BracketSlot
@@ -114,9 +389,6 @@ export function BracketRound({
               />
             );
           })}
-          {connect !== "none" ? (
-            <span className="bracket-connector" aria-hidden="true" />
-          ) : null}
         </div>
       ))}
     </div>
@@ -127,6 +399,7 @@ export function BracketSection({ section, ...roundProps }) {
   return (
     <div className="bracket-section">
       <p className="bracket-section-label">{section.label}</p>
+
       <div className="bracket-section-rounds">
         {section.rounds.map((round, index) => (
           <BracketRound
@@ -152,15 +425,26 @@ export function ChampionCard({
   return (
     <div className="bracket-section bracket-champion-section">
       <p className="bracket-section-label">Champion</p>
+
       <div className="bracket-section-rounds">
         <div className="bracket-round bracket-champion">
           <p className="bracket-round-label">&nbsp;</p>
+
           <div className={`champion-card ${champion ? "is-filled" : ""}`}>
-            <span className="champion-crown" aria-hidden="true">♛</span>
+            <span className="champion-crown" aria-hidden="true">
+              ♛
+            </span>
+
             {champion ? (
               <>
-                <span className="champion-eyebrow">{eyebrow}</span>
-                <span className="champion-name">{champion.teamName}</span>
+                <span className="champion-eyebrow">
+                  {eyebrow}
+                </span>
+
+                <span className="champion-name">
+                  {champion.teamName}
+                </span>
+
                 <span className="champion-meta">
                   {championPlayers.length} players · avg{" "}
                   {NUMBER_FORMAT.format(championAverage)} MMR
@@ -168,8 +452,13 @@ export function ChampionCard({
               </>
             ) : (
               <>
-                <span className="champion-eyebrow">{eyebrow}</span>
-                <span className="champion-empty">{emptyText}</span>
+                <span className="champion-eyebrow">
+                  {eyebrow}
+                </span>
+
+                <span className="champion-empty">
+                  {emptyText}
+                </span>
               </>
             )}
           </div>

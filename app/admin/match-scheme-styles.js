@@ -205,6 +205,56 @@ export const MATCH_SCHEME_STYLES = `
     background: var(--ms-border-strong);
   }
 
+  /* ---------- Round robin: rounds stacked vertically ---------- */
+
+  .bracket-board[data-format="round-robin"] {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 24px;
+    overflow: visible;
+  }
+
+  .bracket-board[data-format="round-robin"] .bracket-section {
+    width: 100%;
+    flex: none;
+  }
+
+  .bracket-board[data-format="round-robin"] .bracket-section-rounds {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 18px;
+  }
+
+  .bracket-board[data-format="round-robin"] .bracket-round:not(.bracket-champion) {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    flex: none;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 10px;
+    justify-content: stretch;
+    padding-top: 26px;
+  }
+
+  .bracket-board[data-format="round-robin"] .bracket-match {
+    margin: 0;
+  }
+
+  .bracket-board[data-format="round-robin"] .bracket-champion {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+  }
+
+  .bracket-board[data-format="round-robin"] .bracket-champion .champion-card {
+    width: min(100%, 340px);
+  }
+
+  .bracket-board[data-format="round-robin"] .champion-card::before {
+    display: none;
+  }
+
   .bracket-section {
     display: flex;
     flex: none;

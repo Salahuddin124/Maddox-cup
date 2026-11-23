@@ -2,7 +2,7 @@ import { configureStore, createSelector, createSlice } from "@reduxjs/toolkit";
 
 export const SCHEME_CACHE_KEY = "maddoxx-scheme-cache";
 
-const FORMATS = ["single", "double", "round-robin"];
+const FORMATS = ["single", "double", "round-robin", "swiss"];
 
 const emptySeed = { signature: "", slots: {} };
 const emptyScheme = () => ({ slots: {}, winners: {} });
@@ -10,6 +10,7 @@ const emptyFormats = () => ({
   single: emptyScheme(),
   double: emptyScheme(),
   "round-robin": emptyScheme(),
+  swiss: emptyScheme(),
 });
 
 const initialState = {

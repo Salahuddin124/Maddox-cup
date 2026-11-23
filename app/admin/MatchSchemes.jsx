@@ -9,6 +9,8 @@ import SingleElimination from "./SingleElimination";
 import { MATCH_SCHEME_STYLES } from "./match-scheme-styles";
 import RoundRobin from "./RoundRobin";
 import { buildRoundRobin, resolveRoundRobin } from "./roundRobin";
+import Swiss from "./Swiss";
+import { buildSwiss, getSwissDownstream, resolveSwiss } from "./swiss";
 import {
   moveTeam,
   resetBracket,
@@ -39,6 +41,7 @@ function MatchSchemesPanel({ teams = [] }) {
   const size = Math.max(2, 2 ** Math.ceil(Math.log2(Math.max(teams.length, 2))));
   const upperCount = size / 2;
   const isRoundRobin = format === "round-robin";
+  const isSwiss = format === "swiss";
 
   // Seed order is shared by every format. The opening pairs define it, and
   // round robin uses the same order to build its all-play-all schedule.
@@ -63,10 +66,12 @@ function MatchSchemesPanel({ teams = [] }) {
   }, [seed.slots, signature, upperCount]);
 
   const blueprint = useMemo(
-    () => isRoundRobin
-      ? buildRoundRobin(seedOrderIds)
-      : buildBlueprint(format, upperCount),
-    [format, isRoundRobin, seedOrderIds, upperCount],
+    () => isSwiss
+      ? buildSwiss(seedOrderIds, winners)
+      : isRoundRobin
+        ? buildRoundRobin(seedOrderIds)
+        : buildBlueprint(format, upperCount),
+    [format, isRoundRobin, isSwiss, seedOrderIds, upperCount, winners],
   );
 
   // Teams start in a standard 1v8 / 4v5 / 2v7 / 3v6 style spread. The seed is
@@ -113,16 +118,18 @@ function MatchSchemesPanel({ teams = [] }) {
   // Only the seeded round is stored. Elimination brackets derive later slots
   // and drops; round robin derives the full schedule and live standings.
   const resolved = useMemo(
-    () => isRoundRobin
-      ? resolveRoundRobin(blueprint, winners)
-      : resolveBracket(blueprint, slots, winners),
-    [blueprint, isRoundRobin, slots, winners],
+    () => isSwiss
+      ? resolveSwiss(blueprint, winners)
+      : isRoundRobin
+        ? resolveRoundRobin(blueprint, winners)
+        : resolveBracket(blueprint, slots, winners),
+    [blueprint, isRoundRobin, isSwiss, slots, winners],
   );
   const { boardSlots, eliminated, matchCount, standings } = resolved;
 
   const decidedCount = Object.keys(winners).length;
 
-  const championId = isRoundRobin
+  const championId = isRoundRobin || isSwiss
     ? resolved.championId
     : winners[blueprint.finalKey];
   const champion =
@@ -150,7 +157,9 @@ function MatchSchemesPanel({ teams = [] }) {
     dispatch(setWinner({
       matchKey,
       teamId,
-      downstream: getDownstream(blueprint, matchKey),
+      downstream: isSwiss
+        ? getSwissDownstream(blueprint, matchKey)
+        : getDownstream(blueprint, matchKey),
     }));
   };
 
@@ -188,6 +197,9 @@ function MatchSchemesPanel({ teams = [] }) {
               {isRoundRobin ? (
                 <> In Round Robin, every team plays every other team once; standings decide the winner.</>
               ) : null}
+              {isSwiss ? (
+                <> In the Swiss stage, teams are paired by record each round with no eliminations; standings decide the winner.</>
+              ) : null}
             </p>
           </div>
           <button
@@ -224,6 +236,14 @@ function MatchSchemesPanel({ teams = [] }) {
           >
             Round Robin
           </button>
+          <button
+            type="button"
+            className={format === "swiss" ? "is-active" : ""}
+            aria-pressed={format === "swiss"}
+            onClick={() => dispatch(setFormat("swiss"))}
+          >
+            Swiss
+          </button>
         </div>
 
         <p className="builder-status">
@@ -234,8 +254,10 @@ function MatchSchemesPanel({ teams = [] }) {
           <SingleElimination {...bracketProps} />
         ) : format === "double" ? (
           <DoubleElimination {...bracketProps} />
-        ) : (
+        ) : isRoundRobin ? (
           <RoundRobin {...bracketProps} />
+        ) : (
+          <Swiss {...bracketProps} />
         )}
       </section>
 

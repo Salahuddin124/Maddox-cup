@@ -732,6 +732,16 @@ export const MATCH_SCHEME_STYLES = `
     text-align: right;
   }
 
+  /* ---------- Swiss standings ---------- */
+  .swiss-standings tr.is-leader {
+    background: rgba(99, 215, 255, 0.05);
+  }
+
+  .swiss-standings tr.is-leader .rr-rank,
+  .swiss-standings tr.is-leader .rr-team-name {
+    color: var(--current);
+  }
+
   /* ---------- Responsive ---------- */
 
   @media (max-width: 900px) {

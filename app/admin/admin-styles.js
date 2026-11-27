@@ -1,6 +1,8 @@
 // Shared admin styles. The dashboard and the login page live on separate
 // routes, so the base look is kept in one place to avoid drift.
 export const BASE_STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
   :root {
     color-scheme: dark;
 

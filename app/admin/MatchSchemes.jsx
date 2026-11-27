@@ -4,7 +4,6 @@ import { useEffect, useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { buildBlueprint, getDownstream, resolveBracket } from "./bracket";
 import DoubleElimination from "./DoubleElimination";
-import SchemeCacheProvider from "./SchemeCacheProvider";
 import SingleElimination from "./SingleElimination";
 import { MATCH_SCHEME_STYLES } from "./match-scheme-styles";
 import RoundRobin from "./RoundRobin";
@@ -310,9 +309,7 @@ export default function MatchSchemes({ teams = [] }) {
   return (
     <>
       <style>{MATCH_SCHEME_STYLES}</style>
-      <SchemeCacheProvider>
-        <MatchSchemesPanel teams={teams} />
-      </SchemeCacheProvider>
+      <MatchSchemesPanel teams={teams} />
     </>
   );
 }

@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Logo, { LOGO_STYLES } from "../Logo";
 import { BASE_STYLES } from "./admin-styles";
+import DrawFormat from "./DrawFormat";
 import MatchSchemes from "./MatchSchemes";
+import SchemeCacheProvider from "./SchemeCacheProvider";
 import { ADMIN_THEME_KEY } from "./theme";
 
 const NUMBER_FORMAT = new Intl.NumberFormat("en-US");
@@ -19,6 +21,7 @@ const ROLE_LABELS = {
 
 const DASH_TABS = [
   { id: "teams", label: "Team List" },
+  { id: "draw", label: "Draw Format" },
   { id: "schemes", label: "Match Schemes" },
 ];
 
@@ -717,67 +720,80 @@ export default function AdminDashboard() {
             <SummaryCard label="Average MMR" value={overallAverage} />
           </section>
 
-          {activeTab === "teams" ? (
-            <div
-              role="tabpanel"
-              id="dash-panel-teams"
-              aria-labelledby="dash-tab-teams"
-            >
-              {error ? (
-                <p className="form-error" role="alert">
-                  {error}
-                </p>
-              ) : null}
-
-              {teams.length > 1 ? (
-                <div className="list-toolbar">
-                  <p>
-                    {teams.length} teams
-                    <span className="toolbar-sub">
-                      {" "}
-                      — {openIds.size} expanded
-                    </span>
+          <SchemeCacheProvider>
+            {activeTab === "teams" ? (
+              <div
+                role="tabpanel"
+                id="dash-panel-teams"
+                aria-labelledby="dash-tab-teams"
+              >
+                {error ? (
+                  <p className="form-error" role="alert">
+                    {error}
                   </p>
-                  <button
-                    type="button"
-                    className="btn btn-quiet"
-                    onClick={toggleAll}
-                  >
-                    {allOpen ? "Collapse all" : "Expand all"}
-                  </button>
-                </div>
-              ) : null}
+                ) : null}
 
-              {loading && teams.length === 0 ? (
-                <SkeletonList />
-              ) : teams.length === 0 ? (
-                <p className="empty-state">
-                  No registrations yet. New teams will appear here as they sign
-                  up.
-                </p>
-              ) : (
-                <div className="team-list">
-                  {teams.map((team, index) => (
-                    <TeamCard
-                      key={team.id}
-                      team={team}
-                      index={index}
-                      open={openIds.has(team.id)}
-                      onToggle={() => toggleTeam(team.id)}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div
-              role="tabpanel"
-              id="dash-panel-schemes"
-              aria-labelledby="dash-tab-schemes"
-            >
-              <MatchSchemes teams={teams} />
-            </div>
-          )}
+                {teams.length > 1 ? (
+                  <div className="list-toolbar">
+                    <p>
+                      {teams.length} teams
+                      <span className="toolbar-sub">
+                        {" "}
+                        — {openIds.size} expanded
+                      </span>
+                    </p>
+                    <button
+                      type="button"
+                      className="btn btn-quiet"
+                      onClick={toggleAll}
+                    >
+                      {allOpen ? "Collapse all" : "Expand all"}
+                    </button>
+                  </div>
+                ) : null}
+
+                {loading && teams.length === 0 ? (
+                  <SkeletonList />
+                ) : teams.length === 0 ? (
+                  <p className="empty-state">
+                    No registrations yet. New teams will appear here as they sign
+                    up.
+                  </p>
+                ) : (
+                  <div className="team-list">
+                    {teams.map((team, index) => (
+                      <TeamCard
+                        key={team.id}
+                        team={team}
+                        index={index}
+                        open={openIds.has(team.id)}
+                        onToggle={() => toggleTeam(team.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : activeTab === "draw" ? (
+              <div
+                role="tabpanel"
+                id="dash-panel-draw"
+                aria-labelledby="dash-tab-draw"
+              >
+                <DrawFormat
+                  teams={teams}
+                  onApplied={() => setActiveTab("schemes")}
+                />
+              </div>
+            ) : (
+              <div
+                role="tabpanel"
+                id="dash-panel-schemes"
+                aria-labelledby="dash-tab-schemes"
+              >
+                <MatchSchemes teams={teams} />
+              </div>
+            )}
+          </SchemeCacheProvider>
         </div>
       </main>
     </>

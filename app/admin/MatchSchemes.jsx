@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { buildBlueprint, getDownstream, resolveBracket } from "./bracket";
 import DoubleElimination from "./DoubleElimination";
@@ -11,10 +11,13 @@ import { buildRoundRobin, resolveRoundRobin } from "./roundRobin";
 import Swiss from "./Swiss";
 import { buildSwiss, getSwissDownstream, resolveSwiss } from "./swiss";
 import {
+  mergeSchedules,
   moveTeam,
   resetBracket,
+  schemeStore,
   selectScheme,
   setFormat,
+  setSchedule,
   setSeed,
   setWinner,
 } from "./schemeStore";
@@ -30,9 +33,17 @@ function average(values) {
   );
 }
 
-function MatchSchemesPanel({ teams = [] }) {
+function MatchSchemesPanel({ teams = [], embedded = false }) {
   const dispatch = useDispatch();
-  const { format, slots, winners, seed } = useSelector(selectScheme);
+  const { format, slots, winners, seed, schedule } = useSelector(selectScheme);
+  const scheduleTimers = useRef(new Map());
+  const scheduleLoaded = useRef(false);
+
+  // The embedded preview inside Draw Format only ever shows Double Elimination;
+  // the other schemes remain in the codebase but have no dashboard navigation.
+  useEffect(() => {
+    if (embedded && format !== "double") dispatch(setFormat("double"));
+  }, [dispatch, embedded, format]);
 
   const teamsById = new Map(teams.map((team) => [Number(team.id), team]));
   const signature = teams.map((team) => Number(team.id)).join(",");
@@ -87,6 +98,14 @@ function MatchSchemesPanel({ teams = [] }) {
   useEffect(() => {
     if (signature === "" || seedReady) return;
 
+    // A render queued before the draw was applied can be stale. Check the live
+    // store too so it can't overwrite the drawn order with the default seed.
+    const liveSeed = schemeStore.getState().scheme.seed;
+    if (
+      liveSeed.signature === signature &&
+      Object.keys(liveSeed.slots).length > 0
+    ) return;
+
     const ids = signature.split(",").map(Number);
     const ordered = [];
 
@@ -113,6 +132,35 @@ function MatchSchemesPanel({ teams = [] }) {
     // seed.slots identity changes when the cache hydrates. Without it here a
     // stale cached seed can overwrite a fresh one and leave Round 1 blank.
   }, [dispatch, seed.slots, seedReady, signature, upperCount]);
+
+  // The database is the source of truth for round dates/times. The Redux copy
+  // is restored from localStorage first so inputs never flicker empty on load.
+  useEffect(() => {
+    if (scheduleLoaded.current) return undefined;
+    scheduleLoaded.current = true;
+
+    let cancelled = false;
+    fetch("/api/schedule", {
+      credentials: "same-origin",
+      cache: "no-store",
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((result) => {
+        if (!cancelled && result?.ok && Array.isArray(result.schedules)) {
+          dispatch(mergeSchedules({ schedules: result.schedules }));
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dispatch]);
+
+  useEffect(() => () => {
+    scheduleTimers.current.forEach((id) => clearTimeout(id));
+    scheduleTimers.current.clear();
+  }, []);
 
   // Only the seeded round is stored. Elimination brackets derive later slots
   // and drops; round robin derives the full schedule and live standings.
@@ -162,6 +210,33 @@ function MatchSchemesPanel({ teams = [] }) {
     }));
   };
 
+  const handleScheduleChange = (roundKey, field, value) => {
+    const scheduleFormat = embedded ? "double" : format;
+    dispatch(setSchedule({ format: scheduleFormat, roundKey, field, value }));
+
+    // Read the canonical store after dispatch so two quick edits (date then
+    // time) can't overwrite each other with a stale render-time value.
+    const entry =
+      schemeStore.getState().scheme.schedules[scheduleFormat]?.[roundKey] ?? {};
+    const timerKey = `${scheduleFormat}:${roundKey}`;
+    clearTimeout(scheduleTimers.current.get(timerKey));
+
+    scheduleTimers.current.set(timerKey, setTimeout(() => {
+      scheduleTimers.current.delete(timerKey);
+      fetch("/api/schedule", {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          format: scheduleFormat,
+          roundKey,
+          date: entry.date ?? "",
+          time: entry.time ?? "",
+        }),
+      }).catch(() => {});
+    }, 350));
+  };
+
   // Everything the format components need is passed explicitly through props.
   // They stay presentational; Redux access and callbacks remain in this container.
   const bracketProps = {
@@ -179,19 +254,24 @@ function MatchSchemesPanel({ teams = [] }) {
     onPickWinner: handleWinner,
     onDragStart: handleDragStart,
     onDrop: handleDrop,
+    schedule,
+    onScheduleChange: handleScheduleChange,
+    showSchedule: format === "double" || embedded,
   };
 
   return (
     <>
-      <section className="scheme-builder" aria-labelledby="builder-heading">
+      <section className={`scheme-builder ${embedded ? "is-embedded" : ""}`} aria-labelledby="builder-heading">
         <div className="builder-head">
           <div>
-            <h3 id="builder-heading">Bracket preview</h3>
+            <h3 id="builder-heading">
+              {embedded ? "Double elimination bracket" : "Bracket preview"}
+            </h3>
             <p>
               Round 1 teams are locked in — drag them to change the order. Click
               <strong> W </strong> on a team to pick the winner.
               {format === "double" ? (
-                <> In Double Elimination, upper-bracket losers drop to the lower bracket instead of going out; the last team standing is crowned at the end.</>
+                <> Upper-bracket losers drop to the lower bracket instead of going out; the last team standing is crowned at the end. Edit a round's date and time to update the saved schedule.</>
               ) : null}
               {isRoundRobin ? (
                 <> In Round Robin, every team plays every other team once; standings decide the winner.</>
@@ -201,57 +281,61 @@ function MatchSchemesPanel({ teams = [] }) {
               ) : null}
             </p>
           </div>
-          <button
-            type="button"
-            className="btn btn-quiet"
-            onClick={() => dispatch(resetBracket())}
-          >
-            Reset bracket
-          </button>
+          {embedded ? null : (
+            <button
+              type="button"
+              className="btn btn-quiet"
+              onClick={() => dispatch(resetBracket())}
+            >
+              Reset bracket
+            </button>
+          )}
         </div>
 
-        <div className="format-switch" role="group" aria-label="Match format">
-          <button
-            type="button"
-            className={format === "single" ? "is-active" : ""}
-            aria-pressed={format === "single"}
-            onClick={() => dispatch(setFormat("single"))}
-          >
-            Single Elimination
-          </button>
-          <button
-            type="button"
-            className={format === "double" ? "is-active" : ""}
-            aria-pressed={format === "double"}
-            onClick={() => dispatch(setFormat("double"))}
-          >
-            Double Elimination
-          </button>
-          <button
-            type="button"
-            className={format === "round-robin" ? "is-active" : ""}
-            aria-pressed={format === "round-robin"}
-            onClick={() => dispatch(setFormat("round-robin"))}
-          >
-            Round Robin
-          </button>
-          <button
-            type="button"
-            className={format === "swiss" ? "is-active" : ""}
-            aria-pressed={format === "swiss"}
-            onClick={() => dispatch(setFormat("swiss"))}
-          >
-            Swiss
-          </button>
-        </div>
+        {embedded ? null : (
+          <div className="format-switch" role="group" aria-label="Match format">
+            <button
+              type="button"
+              className={format === "single" ? "is-active" : ""}
+              aria-pressed={format === "single"}
+              onClick={() => dispatch(setFormat("single"))}
+            >
+              Single Elimination
+            </button>
+            <button
+              type="button"
+              className={format === "double" ? "is-active" : ""}
+              aria-pressed={format === "double"}
+              onClick={() => dispatch(setFormat("double"))}
+            >
+              Double Elimination
+            </button>
+            <button
+              type="button"
+              className={format === "round-robin" ? "is-active" : ""}
+              aria-pressed={format === "round-robin"}
+              onClick={() => dispatch(setFormat("round-robin"))}
+            >
+              Round Robin
+            </button>
+            <button
+              type="button"
+              className={format === "swiss" ? "is-active" : ""}
+              aria-pressed={format === "swiss"}
+              onClick={() => dispatch(setFormat("swiss"))}
+            >
+              Swiss
+            </button>
+          </div>
+        )}
 
         <p className="builder-status">
           {decidedCount} of {matchCount} matches decided
         </p>
 
-        {format === "single" ? (
+        {format === "single" && !embedded ? (
           <SingleElimination {...bracketProps} />
-        ) : format === "double" ? (
+        ) : format === "double" || embedded ? (
           <DoubleElimination {...bracketProps} />
         ) : isRoundRobin ? (
           <RoundRobin {...bracketProps} />
@@ -260,6 +344,7 @@ function MatchSchemesPanel({ teams = [] }) {
         )}
       </section>
 
+      {embedded ? null : (
       <section className="schemes-teams" aria-labelledby="schemes-teams-heading">
         <div className="schemes-teams-head">
           <h3 id="schemes-teams-heading">Starting positions</h3>
@@ -301,15 +386,16 @@ function MatchSchemesPanel({ teams = [] }) {
           </div>
         )}
       </section>
+      )}
     </>
   );
 }
 
-export default function MatchSchemes({ teams = [] }) {
+export default function MatchSchemes({ teams = [], embedded = false }) {
   return (
     <>
       <style>{MATCH_SCHEME_STYLES}</style>
-      <MatchSchemesPanel teams={teams} />
+      <MatchSchemesPanel teams={teams} embedded={embedded} />
     </>
   );
 }

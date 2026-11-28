@@ -3,6 +3,7 @@ import {
   ADMIN_COOKIE,
   ADMIN_COOKIE_MAX_AGE,
   createAdminToken,
+  readCookie,
   verifyAdminToken,
   verifyPassphrase,
 } from "../../../lib/admin-auth";
@@ -15,22 +16,6 @@ function noStoreJson(body, init = {}) {
   headers.set("Cache-Control", "no-store");
 
   return Response.json(body, { ...init, headers });
-}
-
-function readCookie(request, name) {
-  const header = request.headers.get("cookie");
-  if (!header) return null;
-
-  for (const part of header.split(";")) {
-    const separator = part.indexOf("=");
-    if (separator === -1) continue;
-
-    if (part.slice(0, separator).trim() !== name) continue;
-
-    return part.slice(separator + 1).trim() || null;
-  }
-
-  return null;
 }
 
 function isSecureRequest(request) {

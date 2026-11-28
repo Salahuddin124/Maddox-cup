@@ -6,6 +6,12 @@ const FORMATS = ["single", "double", "round-robin", "swiss"];
 
 const emptySeed = { signature: "", slots: {} };
 const emptyScheme = () => ({ slots: {}, winners: {} });
+const emptySchedules = () => ({
+  single: {},
+  double: {},
+  "round-robin": {},
+  swiss: {},
+});
 const emptyFormats = () => ({
   single: emptyScheme(),
   double: emptyScheme(),
@@ -21,6 +27,8 @@ const initialState = {
   formats: emptyFormats(),
   // Shared, locked starting positions used to seed every scheme.
   seed: emptySeed,
+  // Round dates/times persist here and in the database, independent of picks.
+  schedules: emptySchedules(),
 };
 
 const isSeedSlot = (key) => typeof key === "string" && key.startsWith("u-0-");
@@ -28,6 +36,19 @@ const isRecord = (value) =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
 const normalizeFormat = (value) => FORMATS.includes(value) ? value : "single";
+const cleanSchedule = (value) => {
+  if (!isRecord(value)) return {};
+
+  const result = {};
+  for (const [roundKey, entry] of Object.entries(value)) {
+    if (!isRecord(entry)) continue;
+    result[roundKey] = {
+      date: typeof entry.date === "string" ? entry.date : "",
+      time: typeof entry.time === "string" ? entry.time : "",
+    };
+  }
+  return result;
+};
 const cleanSlots = (value) => (isRecord(value) ? { ...value } : {});
 const cleanWinners = (value) => (isRecord(value) ? { ...value } : {});
 
@@ -85,7 +106,21 @@ const schemeSlice = createSlice({
         formats[format] = cleanScheme(cached);
       }
 
-      return { format, formats: seedEmptySlots(formats, seed.slots), seed };
+      const schedules = emptySchedules();
+      if (isRecord(cached.schedules)) {
+        for (const key of FORMATS) {
+          if (isRecord(cached.schedules[key])) {
+            schedules[key] = cleanSchedule(cached.schedules[key]);
+          }
+        }
+      }
+
+      return {
+        format,
+        formats: seedEmptySlots(formats, seed.slots),
+        seed,
+        schedules,
+      };
     },
     setFormat(state, action) {
       const next = normalizeFormat(action.payload);
@@ -106,6 +141,24 @@ const schemeSlice = createSlice({
       const formats = emptyFormats();
       for (const key of FORMATS) formats[key].slots = { ...state.seed.slots };
       state.formats = formats;
+    },
+    hydrateTournament(state, action) {
+      const payload = action.payload ?? {};
+      const signature =
+        typeof payload.signature === "string" ? payload.signature : "";
+      const slots = cleanSlots(payload.slots);
+      const seedSlots = {};
+
+      for (const [key, teamId] of Object.entries(slots)) {
+        if (key.startsWith("u-0-")) seedSlots[key] = teamId;
+      }
+
+      state.seed = { signature, slots: seedSlots };
+      state.formats.double = {
+        slots,
+        winners: cleanWinners(payload.winners),
+      };
+      state.format = "double";
     },
     moveTeam(state, action) {
       const scheme = activeScheme(state);
@@ -141,6 +194,45 @@ const schemeSlice = createSlice({
       scheme.slots = { ...state.seed.slots };
       scheme.winners = {};
     },
+    resetAll() {
+      return {
+        format: "single",
+        formats: emptyFormats(),
+        seed: { ...emptySeed },
+        schedules: emptySchedules(),
+      };
+    },
+    setSchedule(state, action) {
+      const { format, roundKey, field, value } = action.payload ?? {};
+      const key = normalizeFormat(format);
+      if (typeof roundKey !== "string" || !roundKey) return;
+      if (field !== "date" && field !== "time") return;
+
+      state.schedules[key] ??= {};
+      const entry = { ...(state.schedules[key][roundKey] ?? {}) };
+      entry[field] = typeof value === "string" ? value : "";
+
+      if (!entry.date && !entry.time) delete state.schedules[key][roundKey];
+      else state.schedules[key][roundKey] = entry;
+    },
+    mergeSchedules(state, action) {
+      const rows = Array.isArray(action.payload?.schedules)
+        ? action.payload.schedules
+        : [];
+
+      for (const row of rows) {
+        if (!isRecord(row) || typeof row.roundKey !== "string" || !row.roundKey) {
+          continue;
+        }
+
+        const key = normalizeFormat(row.format);
+        state.schedules[key] ??= {};
+        state.schedules[key][row.roundKey] = {
+          date: typeof row.date === "string" ? row.date : "",
+          time: typeof row.time === "string" ? row.time : "",
+        };
+      }
+    },
   },
 });
 
@@ -148,9 +240,13 @@ export const {
   hydrate: hydrateScheme,
   setFormat: setFormat,
   setSeed: setSeed,
+  hydrateTournament: hydrateTournament,
+  resetAll: resetAll,
   moveTeam: moveTeam,
   setWinner: setWinner,
   resetBracket: resetBracket,
+  setSchedule: setSchedule,
+  mergeSchedules: mergeSchedules,
 } = schemeSlice.actions;
 
 // Flatten the active scheme for the presentational container.
@@ -159,10 +255,18 @@ export const selectScheme = createSelector(
     (state) => state.scheme.format,
     (state) => state.scheme.formats,
     (state) => state.scheme.seed,
+    (state) => state.scheme.schedules,
   ],
-  (format, formats, seed) => {
+  (format, formats, seed, schedules) => {
     const active = formats?.[format] ?? emptyScheme();
-    return { format, slots: active.slots, winners: active.winners, seed };
+    return {
+      format,
+      slots: active.slots,
+      winners: active.winners,
+      seed,
+      schedules,
+      schedule: schedules?.[format] ?? {},
+    };
   },
 );
 

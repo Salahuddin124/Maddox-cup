@@ -304,6 +304,50 @@ export const MATCH_SCHEME_STYLES = `
     text-transform: uppercase;
   }
 
+  .bracket-round-schedule {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0 0 7px 3px;
+  }
+
+  .bracket-schedule-input {
+    width: 100%;
+    min-width: 0;
+    max-width: 148px;
+    padding: 5px 7px;
+    border: 1px solid var(--ms-border);
+    border-radius: 7px;
+    background: var(--ms-panel);
+    color: var(--ms-text);
+    color-scheme: dark;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1.2;
+    cursor: pointer;
+    transition: border-color .18s ease, background .18s ease;
+  }
+
+  .bracket-schedule-input:hover,
+  .bracket-schedule-input:focus {
+    border-color: var(--ms-blue);
+    outline: none;
+  }
+
+  [data-theme="light"] .bracket-schedule-input {
+    color-scheme: light;
+  }
+
+  .bracket-schedule-print {
+    display: none;
+  }
+
+  .scheme-builder.is-embedded {
+    margin-top: 26px;
+    padding-top: 22px;
+    border-top: 1px solid var(--ms-border);
+  }
+
   /* ---------- Match cards ---------- */
 
   .bracket-match {
@@ -948,4 +992,34 @@ export const MATCH_SCHEME_STYLES = `
   content: none !important;
   display: none !important;
 }
+
+  @media print {
+    .scheme-builder,
+    .bracket-match,
+    .bracket-slot,
+    .champion-card,
+    .bracket-schedule-print {
+      background: #ffffff !important;
+      color: #111827 !important;
+      border-color: #cbd5e1 !important;
+      box-shadow: none !important;
+    }
+
+    .bracket-schedule-input {
+      display: none !important;
+    }
+
+    .bracket-schedule-print {
+      display: block !important;
+      margin: 0 0 7px 3px;
+      color: #334155 !important;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .04em;
+    }
+
+    .bracket-board {
+      overflow: visible !important;
+    }
+  }
 `;

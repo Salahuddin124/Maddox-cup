@@ -453,6 +453,33 @@ function createMysteryBallDeck(normalizedTeams) {
   }));
 }
 
+// Rebuilds the hidden ball mapping from a saved draw. Revealed balls keep their
+// saved team; unrevealed balls get the remaining teams in registration order.
+function buildDeckFromPicks(picks, normalizedTeams) {
+  const usedNumbers = new Set(picks.map((p) => Number(p.ballNumber)));
+  const usedTeams = new Set(picks.map((p) => String(p.team).trim().toLowerCase()));
+  const remaining = normalizedTeams.filter(
+    (team) => !usedTeams.has(team.name.trim().toLowerCase()),
+  );
+
+  const deck = picks.map((pick) => ({
+    ballNumber: Number(pick.ballNumber),
+    team: pick.team,
+  }));
+
+  let next = 0;
+  for (let ballNumber = 1; ballNumber <= 8; ballNumber += 1) {
+    if (usedNumbers.has(ballNumber)) continue;
+    deck.push({
+      ballNumber,
+      team: remaining[next]?.name ?? `Team ${ballNumber}`,
+    });
+    next += 1;
+  }
+
+  return deck;
+}
+
 
 // MADDOXX CUP High-Resolution Opening Fixtures PNG Exporter
 
@@ -772,8 +799,12 @@ function MysteryBallDrawInner({
   teams,
   logoSrc = MADDOXX_LOGO_DATA_URL,
   embed = false,
+  initialPicks = [],
   onDrawComplete,
   onApplyToBracket,
+  onDrawChange,
+  onResetDraw,
+  applyLabel = 'Send to Match Schemes',
 } = {}) {
   const normalizedTeams = useMemo(() => normalizeTeams(teams), [teams]);
   const teamByName = useMemo(
@@ -808,6 +839,7 @@ function MysteryBallDrawInner({
   const [confirmModal, setConfirmModal] = useState(null);
 
   const timersRef = useRef([]);
+  const hydrationKeyRef = useRef(null);
 
   useEffect(() => {
     if (!embed) {
@@ -821,6 +853,34 @@ function MysteryBallDrawInner({
   }, []);
 
   useEffect(() => clearAllTimers, [clearAllTimers]);
+
+  // Restores a saved draw. The ball mapping is rebuilt so continuing a partial
+  // draw does not silently reassign the already revealed ball numbers.
+  useEffect(() => {
+    const saved = Array.isArray(initialPicks) ? initialPicks : [];
+    const key = JSON.stringify(saved);
+    if (key === hydrationKeyRef.current) return;
+    hydrationKeyRef.current = key;
+
+    clearAllTimers();
+    setBallDeck(buildDeckFromPicks(saved, normalizedTeams));
+    setRevealedPicks(saved);
+    setPhase(saved.length === 8 ? 'complete' : saved.length > 0 ? 'selecting' : 'idle');
+    setActiveView(saved.length === 8 ? 'fixtures' : 'ceremony');
+    setActiveBallNum(null);
+    setCountdownVal(null);
+    setLatestReveal(null);
+    setAnnouncedMatchIndex(null);
+    setAutoFinalPending(false);
+    if (saved.length === 8) {
+      setFixturesAnimKey((k) => k + 1);
+      setConfirmModal(null);
+    }
+  }, [initialPicks, normalizedTeams, clearAllTimers]);
+
+  useEffect(() => {
+    if (typeof onDrawChange === 'function') onDrawChange(revealedPicks);
+  }, [revealedPicks, onDrawChange]);
 
   const schedule = useCallback((fn, ms) => {
     const id = setTimeout(fn, ms);
@@ -1014,6 +1074,7 @@ function MysteryBallDrawInner({
     setAutoFinalPending(false);
     setActiveView('ceremony');
     setConfirmModal(null);
+    if (typeof onResetDraw === 'function') onResetDraw();
   };
 
   const executeReshuffleDraw = () => {
@@ -1030,6 +1091,7 @@ function MysteryBallDrawInner({
     setConfirmModal(null);
     soundEngine.playCeremonyStart();
     triggerBurst();
+    if (typeof onResetDraw === 'function') onResetDraw();
   };
 
   const requestReset = () => {
@@ -1377,7 +1439,7 @@ function MysteryBallDrawInner({
                         className="mxd-btn mxd-btn-gold mxd-btn-hero"
                         onClick={() => onApplyToBracket(revealedPicks.map((p) => p.team), drawMatches)}
                       >
-                        Send to Match Schemes
+                        {applyLabel}
                       </button>
                     )}
                   </div>
@@ -1639,13 +1701,20 @@ function MysteryBallDrawInner({
                   >
                     Replay Reveal
                   </button>
+                  <button
+                    type="button"
+                    className="mxd-btn mxd-btn-crimson"
+                    onClick={requestReset}
+                  >
+                    Reset draw &amp; bracket
+                  </button>
                   {typeof onApplyToBracket === 'function' && (
                     <button
                       type="button"
                       className="mxd-btn mxd-btn-gold"
                       onClick={() => onApplyToBracket(revealedPicks.map((p) => p.team), drawMatches)}
                     >
-                      Send to Match Schemes
+                      {applyLabel}
                     </button>
                   )}
                 </div>
@@ -1728,8 +1797,8 @@ function MysteryBallDrawInner({
             </h2>
             <p className="mxd-modal-body">
               {confirmModal.type === 'reset'
-                ? 'This clears all revealed teams and opening fixtures and returns to standby.'
-                : 'This creates a brand-new random assignment of all 8 Maddoxx Cup teams across balls #1–#8 and restarts the draw.'}
+                ? 'This will permanently reset the saved draw, opening fixtures, bracket results and round schedule. All of that data will be deleted from the database. Are you sure?'
+                : 'This creates a brand-new random assignment of all 8 Maddoxx Cup teams across balls #1–#8. Saved draw results and bracket picks will be cleared. Are you sure?'}
             </p>
             <div className="mxd-modal-actions">
               <button type="button" className="mxd-btn" onClick={() => setConfirmModal(null)}>

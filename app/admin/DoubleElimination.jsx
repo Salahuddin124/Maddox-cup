@@ -19,6 +19,9 @@ export default function DoubleElimination({
   onPickWinner,
   onDragStart,
   onDrop,
+  schedule,
+  onScheduleChange,
+  showSchedule = false,
 }) {
   const boardRef = useRef(null);
 
@@ -30,6 +33,9 @@ export default function DoubleElimination({
     onPickWinner,
     onDragStart,
     onDrop,
+    schedule,
+    onScheduleChange,
+    showSchedule,
   };
 
   const upper = sections.find(
@@ -42,13 +48,14 @@ export default function DoubleElimination({
 
   const grandFinal = sections.find(
     (section) =>
+      section.key === "grand" ||
       section.key === "grand-final" ||
       section.key === "final",
   );
 
   const otherSections = sections.filter(
     (section) =>
-      !["upper", "lower", "grand-final", "final"].includes(
+      !["upper", "lower", "grand", "grand-final", "final"].includes(
         section.key,
       ),
   );

@@ -326,8 +326,13 @@ export function BracketRound({
   onPickWinner,
   onDragStart,
   onDrop,
+  schedule,
+  onScheduleChange,
+  showSchedule = false,
 }) {
   const next = section.rounds[roundIndex + 1];
+  const scheduled = schedule?.[round.key] ?? {};
+  const canSchedule = Boolean(showSchedule && onScheduleChange);
 
   const connect =
     round.connect ??
@@ -348,6 +353,35 @@ export function BracketRound({
       data-connect={connect}
     >
       <p className="bracket-round-label">{round.label}</p>
+
+      {canSchedule ? (
+        <div className="bracket-round-schedule">
+          <input
+            type="date"
+            className="bracket-schedule-input"
+            value={scheduled.date ?? ""}
+            aria-label={`Date for ${section.label ?? "bracket"} ${round.label}`}
+            onChange={(event) =>
+              onScheduleChange(round.key, "date", event.target.value)
+            }
+          />
+          <input
+            type="time"
+            className="bracket-schedule-input"
+            value={scheduled.time ?? ""}
+            aria-label={`Time for ${section.label ?? "bracket"} ${round.label}`}
+            onChange={(event) =>
+              onScheduleChange(round.key, "time", event.target.value)
+            }
+          />
+        </div>
+      ) : null}
+
+      {canSchedule && (scheduled.date || scheduled.time) ? (
+        <p className="bracket-schedule-print">
+          {[scheduled.date, scheduled.time].filter(Boolean).join(" · ")}
+        </p>
+      ) : null}
 
       {round.matches.map((match, matchIndex) => (
         <div

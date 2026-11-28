@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import Logo, { LOGO_STYLES } from "../Logo";
 import { BASE_STYLES } from "./admin-styles";
 import DrawFormat from "./DrawFormat";
-import MatchSchemes from "./MatchSchemes";
 import SchemeCacheProvider from "./SchemeCacheProvider";
 import { ADMIN_THEME_KEY } from "./theme";
 
@@ -22,7 +21,6 @@ const ROLE_LABELS = {
 const DASH_TABS = [
   { id: "teams", label: "Team List" },
   { id: "draw", label: "Draw Format" },
-  { id: "schemes", label: "Match Schemes" },
 ];
 
 function roleLabel(value) {
@@ -779,20 +777,9 @@ export default function AdminDashboard() {
                 id="dash-panel-draw"
                 aria-labelledby="dash-tab-draw"
               >
-                <DrawFormat
-                  teams={teams}
-                  onApplied={() => setActiveTab("schemes")}
-                />
+                <DrawFormat teams={teams} />
               </div>
-            ) : (
-              <div
-                role="tabpanel"
-                id="dash-panel-schemes"
-                aria-labelledby="dash-tab-schemes"
-              >
-                <MatchSchemes teams={teams} />
-              </div>
-            )}
+            ) : null}
           </SchemeCacheProvider>
         </div>
       </main>

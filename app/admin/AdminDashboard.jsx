@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Logo, { LOGO_STYLES } from "../Logo";
 import { BASE_STYLES } from "./admin-styles";
 import DrawFormat from "./DrawFormat";
+import SchedulePanel from "./SchedulePanel";
 import SchemeCacheProvider from "./SchemeCacheProvider";
 import { ADMIN_THEME_KEY } from "./theme";
 
@@ -21,6 +22,7 @@ const ROLE_LABELS = {
 const DASH_TABS = [
   { id: "teams", label: "Team List" },
   { id: "draw", label: "Draw Format" },
+  { id: "schedule", label: "Schedule" },
 ];
 
 function roleLabel(value) {
@@ -486,6 +488,7 @@ export default function AdminDashboard() {
   const [openIds, setOpenIds] = useState(() => new Set());
   const [theme, setTheme] = useState("dark");
   const [activeTab, setActiveTab] = useState("teams");
+  const [scoreTarget, setScoreTarget] = useState(null);
   const didAutoOpen = useRef(false);
 
   // The inline script in app/admin/page.jsx already applied the stored theme
@@ -531,6 +534,20 @@ export default function AdminDashboard() {
     setActiveTab(nextId);
     document.getElementById(`dash-tab-${nextId}`)?.focus();
   };
+
+  // The bracket's W button is a shortcut into the Schedule section, where the
+  // score (and therefore the winner) is actually recorded.
+  const requestScore = useCallback((matchKey, team) => {
+    setScoreTarget({
+      matchKey,
+      teamId: Number(team?.id),
+      teamName: String(team?.teamName ?? team?.name ?? "").replace(/^\*\*|\*\*$/g, "").trim(),
+      requestedAt: Date.now(),
+    });
+    setActiveTab("schedule");
+  }, []);
+
+  const clearScoreTarget = useCallback(() => setScoreTarget(null), []);
 
   const goToLogin = useCallback(() => {
     router.replace("/admin/login");
@@ -777,7 +794,20 @@ export default function AdminDashboard() {
                 id="dash-panel-draw"
                 aria-labelledby="dash-tab-draw"
               >
-                <DrawFormat teams={teams} />
+                <DrawFormat teams={teams} onRequestScore={requestScore} />
+              </div>
+            ) : activeTab === "schedule" ? (
+              <div
+                role="tabpanel"
+                id="dash-panel-schedule"
+                aria-labelledby="dash-tab-schedule"
+              >
+                <SchedulePanel
+                  teams={teams}
+                  target={scoreTarget}
+                  onTargetHandled={clearScoreTarget}
+                  onRequestScore={requestScore}
+                />
               </div>
             ) : null}
           </SchemeCacheProvider>

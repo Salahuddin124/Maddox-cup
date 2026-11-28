@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { buildBlueprint, getDownstream, resolveBracket } from "./bracket";
 import DoubleElimination from "./DoubleElimination";
@@ -11,13 +11,11 @@ import { buildRoundRobin, resolveRoundRobin } from "./roundRobin";
 import Swiss from "./Swiss";
 import { buildSwiss, getSwissDownstream, resolveSwiss } from "./swiss";
 import {
-  mergeSchedules,
   moveTeam,
   resetBracket,
   schemeStore,
   selectScheme,
   setFormat,
-  setSchedule,
   setSeed,
   setWinner,
 } from "./schemeStore";
@@ -33,11 +31,9 @@ function average(values) {
   );
 }
 
-function MatchSchemesPanel({ teams = [], embedded = false }) {
+function MatchSchemesPanel({ teams = [], embedded = false, onRequestScore }) {
   const dispatch = useDispatch();
-  const { format, slots, winners, seed, schedule } = useSelector(selectScheme);
-  const scheduleTimers = useRef(new Map());
-  const scheduleLoaded = useRef(false);
+  const { format, slots, winners, seed } = useSelector(selectScheme);
 
   // The embedded preview inside Draw Format only ever shows Double Elimination;
   // the other schemes remain in the codebase but have no dashboard navigation.
@@ -133,35 +129,6 @@ function MatchSchemesPanel({ teams = [], embedded = false }) {
     // stale cached seed can overwrite a fresh one and leave Round 1 blank.
   }, [dispatch, seed.slots, seedReady, signature, upperCount]);
 
-  // The database is the source of truth for round dates/times. The Redux copy
-  // is restored from localStorage first so inputs never flicker empty on load.
-  useEffect(() => {
-    if (scheduleLoaded.current) return undefined;
-    scheduleLoaded.current = true;
-
-    let cancelled = false;
-    fetch("/api/schedule", {
-      credentials: "same-origin",
-      cache: "no-store",
-    })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((result) => {
-        if (!cancelled && result?.ok && Array.isArray(result.schedules)) {
-          dispatch(mergeSchedules({ schedules: result.schedules }));
-        }
-      })
-      .catch(() => {});
-
-    return () => {
-      cancelled = true;
-    };
-  }, [dispatch]);
-
-  useEffect(() => () => {
-    scheduleTimers.current.forEach((id) => clearTimeout(id));
-    scheduleTimers.current.clear();
-  }, []);
-
   // Only the seeded round is stored. Elimination brackets derive later slots
   // and drops; round robin derives the full schedule and live standings.
   const resolved = useMemo(
@@ -210,33 +177,6 @@ function MatchSchemesPanel({ teams = [], embedded = false }) {
     }));
   };
 
-  const handleScheduleChange = (roundKey, field, value) => {
-    const scheduleFormat = embedded ? "double" : format;
-    dispatch(setSchedule({ format: scheduleFormat, roundKey, field, value }));
-
-    // Read the canonical store after dispatch so two quick edits (date then
-    // time) can't overwrite each other with a stale render-time value.
-    const entry =
-      schemeStore.getState().scheme.schedules[scheduleFormat]?.[roundKey] ?? {};
-    const timerKey = `${scheduleFormat}:${roundKey}`;
-    clearTimeout(scheduleTimers.current.get(timerKey));
-
-    scheduleTimers.current.set(timerKey, setTimeout(() => {
-      scheduleTimers.current.delete(timerKey);
-      fetch("/api/schedule", {
-        method: "PUT",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          format: scheduleFormat,
-          roundKey,
-          date: entry.date ?? "",
-          time: entry.time ?? "",
-        }),
-      }).catch(() => {});
-    }, 350));
-  };
-
   // Everything the format components need is passed explicitly through props.
   // They stay presentational; Redux access and callbacks remain in this container.
   const bracketProps = {
@@ -252,11 +192,9 @@ function MatchSchemesPanel({ teams = [], embedded = false }) {
     championPlayers,
     championAverage,
     onPickWinner: handleWinner,
+    onRequestScore,
     onDragStart: handleDragStart,
     onDrop: handleDrop,
-    schedule,
-    onScheduleChange: handleScheduleChange,
-    showSchedule: format === "double" || embedded,
   };
 
   return (
@@ -269,9 +207,10 @@ function MatchSchemesPanel({ teams = [], embedded = false }) {
             </h3>
             <p>
               Round 1 teams are locked in — drag them to change the order. Click
-              <strong> W </strong> on a team to pick the winner.
+              <strong> W </strong> on a team
+              {onRequestScore ? " to open the score for that fixture" : " to pick the winner"}.
               {format === "double" ? (
-                <> Upper-bracket losers drop to the lower bracket instead of going out; the last team standing is crowned at the end. Edit a round's date and time to update the saved schedule.</>
+                <> Upper-bracket losers drop to the lower bracket instead of going out; the last team standing is crowned at the end.</>
               ) : null}
               {isRoundRobin ? (
                 <> In Round Robin, every team plays every other team once; standings decide the winner.</>
@@ -391,11 +330,15 @@ function MatchSchemesPanel({ teams = [], embedded = false }) {
   );
 }
 
-export default function MatchSchemes({ teams = [], embedded = false }) {
+export default function MatchSchemes({ teams = [], embedded = false, onRequestScore }) {
   return (
     <>
       <style>{MATCH_SCHEME_STYLES}</style>
-      <MatchSchemesPanel teams={teams} embedded={embedded} />
+      <MatchSchemesPanel
+        teams={teams}
+        embedded={embedded}
+        onRequestScore={onRequestScore}
+      />
     </>
   );
 }

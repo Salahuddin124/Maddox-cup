@@ -606,6 +606,8 @@ function exportFixturesToPNG(drawMatches, teamByName = {}) {
 
 
 
+const BALL_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8];
+
 // Balanced positions (%) for the 8 sealed capsules inside the smoked-crystal vessel
 const BALL_POSITIONS = [
   { left: 25, top: 47, delay: '0s' },
@@ -824,6 +826,10 @@ function MysteryBallDrawInner({
   const [soundOn, setSoundOn] = useState(true);
 
   const [ballDeck, setBallDeck] = useState(() => createMysteryBallDeck(normalizedTeams));
+  // The numbered capsules and the roster order are re-shuffled for every
+  // ceremony so the same ball never sits in the same visible spot twice.
+  const [ballOrder, setBallOrder] = useState(() => secureShuffle(BALL_NUMBERS));
+  const [displayTeams, setDisplayTeams] = useState(() => secureShuffle(normalizedTeams));
   const [revealedPicks, setRevealedPicks] = useState([]);
   const [phase, setPhase] = useState('idle');
 
@@ -840,6 +846,7 @@ function MysteryBallDrawInner({
 
   const timersRef = useRef([]);
   const hydrationKeyRef = useRef(null);
+  const emittedPicksKeyRef = useRef(null);
 
   useEffect(() => {
     if (!embed) {
@@ -859,10 +866,15 @@ function MysteryBallDrawInner({
   useEffect(() => {
     const saved = Array.isArray(initialPicks) ? initialPicks : [];
     const key = JSON.stringify(saved);
-    if (key === hydrationKeyRef.current) return;
+    // A pick change emitted by this component comes back through initialPicks.
+    // Treating it as a fresh hydration would clear the lift-out/countdown
+    // timers and break the ceremony animation.
+    if (key === hydrationKeyRef.current || key === emittedPicksKeyRef.current) return;
     hydrationKeyRef.current = key;
 
     clearAllTimers();
+    setBallOrder(secureShuffle(BALL_NUMBERS));
+    setDisplayTeams(secureShuffle(normalizedTeams));
     setBallDeck(buildDeckFromPicks(saved, normalizedTeams));
     setRevealedPicks(saved);
     setPhase(saved.length === 8 ? 'complete' : saved.length > 0 ? 'selecting' : 'idle');
@@ -879,6 +891,7 @@ function MysteryBallDrawInner({
   }, [initialPicks, normalizedTeams, clearAllTimers]);
 
   useEffect(() => {
+    emittedPicksKeyRef.current = JSON.stringify(revealedPicks);
     if (typeof onDrawChange === 'function') onDrawChange(revealedPicks);
   }, [revealedPicks, onDrawChange]);
 
@@ -889,6 +902,11 @@ function MysteryBallDrawInner({
   }, []);
 
   const triggerBurst = useCallback(() => setBurstSignal((n) => n + 1), []);
+
+  const randomizePresentation = useCallback(() => {
+    setBallOrder(secureShuffle(BALL_NUMBERS));
+    setDisplayTeams(secureShuffle(normalizedTeams));
+  }, [normalizedTeams]);
 
   const toggleSound = () => {
     const next = !soundOn;
@@ -950,6 +968,9 @@ function MysteryBallDrawInner({
     clearAllTimers();
     soundEngine.playCeremonyStart();
     triggerBurst();
+    // A fresh ceremony always gets a fresh hidden mapping and visible order.
+    setBallDeck(createMysteryBallDeck(normalizedTeams));
+    randomizePresentation();
     setPhase('selecting');
     setActiveView('ceremony');
   };
@@ -1065,6 +1086,7 @@ function MysteryBallDrawInner({
   const executeResetDraw = () => {
     clearAllTimers();
     setBallDeck(createMysteryBallDeck(normalizedTeams));
+    randomizePresentation();
     setRevealedPicks([]);
     setPhase('idle');
     setActiveBallNum(null);
@@ -1080,6 +1102,7 @@ function MysteryBallDrawInner({
   const executeReshuffleDraw = () => {
     clearAllTimers();
     setBallDeck(createMysteryBallDeck(normalizedTeams));
+    randomizePresentation();
     setRevealedPicks([]);
     setPhase('selecting');
     setActiveBallNum(null);
@@ -1124,7 +1147,7 @@ function MysteryBallDrawInner({
   const latestMeta = latestReveal ? teamByName[latestReveal.team] : null;
 
   return (
-    <div className={`mxd-root ${embed ? '' : 'mxd-shell'}`}>
+    <div className={`mxd-root ${embed ? '' : 'mxd-shell'} ${confirmModal ? 'mxd-modal-open' : ''}`}>
       {!embed && (
         <div className="mxd-aura" aria-hidden="true">
           <span className="mxd-aura-one" />
@@ -1360,7 +1383,7 @@ function MysteryBallDrawInner({
 
                   <div className="mxd-balls-layer">
                     {BALL_POSITIONS.map((pos, idx) => {
-                      const num = idx + 1;
+                      const num = ballOrder[idx];
                       const isDrawn = drawnBallNumbers.has(num);
                       const isExtracting = activeBallNum === num && phase === 'extracting';
                       const canSelect = phase === 'selecting' && !isDrawn;
@@ -1403,7 +1426,7 @@ function MysteryBallDrawInner({
                 {phase === 'selecting' && (
                   <div className="mxd-picker-row" role="group" aria-label="Select Mystery Ball by number">
                     <span className="mxd-picker-label">Select ball:</span>
-                    {[1, 2, 3, 4, 5, 6, 7, 8].map((num) => {
+                    {ballOrder.map((num) => {
                       const used = drawnBallNumbers.has(num);
                       return (
                         <button
@@ -1576,7 +1599,7 @@ function MysteryBallDrawInner({
                   <span className="mxd-panel-sub">{ballsRemaining} in vessel</span>
                 </div>
                 <div className="mxd-roster-list">
-                  {normalizedTeams.map((t) => {
+                  {displayTeams.map((t) => {
                     const drawnInfo = drawnTeamMap[t.name];
                     return (
                       <div key={t.code} className={`mxd-roster-row ${drawnInfo ? 'is-drawn' : ''}`}>
@@ -1797,7 +1820,7 @@ function MysteryBallDrawInner({
             </h2>
             <p className="mxd-modal-body">
               {confirmModal.type === 'reset'
-                ? 'This will permanently reset the saved draw, opening fixtures, bracket results and round schedule. All of that data will be deleted from the database. Are you sure?'
+                ? 'This will permanently reset the saved draw, opening fixtures, bracket results, scores and match schedule. All of that data will be deleted from the database. Are you sure?'
                 : 'This creates a brand-new random assignment of all 8 Maddoxx Cup teams across balls #1–#8. Saved draw results and bracket picks will be cleared. Are you sure?'}
             </p>
             <div className="mxd-modal-actions">
@@ -1845,6 +1868,9 @@ export default function MysteryBallDraw(props) {
   return (
     <>
       <style>{MADDOXX_DRAW_STYLES}</style>
+      {/* The bracket is a later sibling of .mxd-root, so lift the whole draw
+          while a confirmation is open or its modal cannot receive clicks. */}
+      <style>{`.mxd-root.mxd-modal-open { z-index: 1000; }`}</style>
       <MysteryBallDrawInner {...props} />
     </>
   );

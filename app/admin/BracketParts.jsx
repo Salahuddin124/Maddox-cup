@@ -12,6 +12,7 @@ export function BracketSlot({
   isWinner,
   isOut,
   onPickWinner,
+  onRequestScore,
   onDragStart,
   onDrop,
 }) {
@@ -45,10 +46,24 @@ export function BracketSlot({
           <button
             type="button"
             className={`bracket-win-btn ${isWinner ? "is-active" : ""}`}
-            onClick={() => onPickWinner(matchKey, Number(team.id))}
+            onClick={() =>
+              typeof onRequestScore === "function"
+                ? onRequestScore(matchKey, team)
+                : onPickWinner(matchKey, Number(team.id))
+            }
             aria-pressed={isWinner}
-            aria-label={`${isWinner ? "Unmark" : "Mark"} ${team.teamName} as the winner`}
-            title={isWinner ? "Winner — click to undo" : "Mark as winner"}
+            aria-label={
+              typeof onRequestScore === "function"
+                ? `Update the score for ${team.teamName}`
+                : `${isWinner ? "Unmark" : "Mark"} ${team.teamName} as the winner`
+            }
+            title={
+              typeof onRequestScore === "function"
+                ? "Update score in Schedule"
+                : isWinner
+                  ? "Winner — click to undo"
+                  : "Mark as winner"
+            }
           >
             W
           </button>
@@ -324,15 +339,11 @@ export function BracketRound({
   winners,
   eliminated,
   onPickWinner,
+  onRequestScore,
   onDragStart,
   onDrop,
-  schedule,
-  onScheduleChange,
-  showSchedule = false,
 }) {
   const next = section.rounds[roundIndex + 1];
-  const scheduled = schedule?.[round.key] ?? {};
-  const canSchedule = Boolean(showSchedule && onScheduleChange);
 
   const connect =
     round.connect ??
@@ -353,35 +364,6 @@ export function BracketRound({
       data-connect={connect}
     >
       <p className="bracket-round-label">{round.label}</p>
-
-      {canSchedule ? (
-        <div className="bracket-round-schedule">
-          <input
-            type="date"
-            className="bracket-schedule-input"
-            value={scheduled.date ?? ""}
-            aria-label={`Date for ${section.label ?? "bracket"} ${round.label}`}
-            onChange={(event) =>
-              onScheduleChange(round.key, "date", event.target.value)
-            }
-          />
-          <input
-            type="time"
-            className="bracket-schedule-input"
-            value={scheduled.time ?? ""}
-            aria-label={`Time for ${section.label ?? "bracket"} ${round.label}`}
-            onChange={(event) =>
-              onScheduleChange(round.key, "time", event.target.value)
-            }
-          />
-        </div>
-      ) : null}
-
-      {canSchedule && (scheduled.date || scheduled.time) ? (
-        <p className="bracket-schedule-print">
-          {[scheduled.date, scheduled.time].filter(Boolean).join(" · ")}
-        </p>
-      ) : null}
 
       {round.matches.map((match, matchIndex) => (
         <div
@@ -418,6 +400,7 @@ export function BracketRound({
                 isWinner={isWinner}
                 isOut={isOut}
                 onPickWinner={onPickWinner}
+                onRequestScore={onRequestScore}
                 onDragStart={onDragStart}
                 onDrop={onDrop}
               />

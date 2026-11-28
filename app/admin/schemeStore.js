@@ -189,6 +189,21 @@ const schemeSlice = createSlice({
       // including transitive results in later sections.
       for (const key of downstream) delete scheme.winners[key];
     },
+    // Used by the Schedule section: a saved score sets the winner without
+    // toggling it, and clearing a score removes it.
+    setWinnerResult(state, action) {
+      const { matchKey, teamId, downstream = [], clear = false } = action.payload ?? {};
+      if (!matchKey) return;
+
+      state.format = "double";
+      const scheme = activeScheme(state);
+
+      if (clear) delete scheme.winners[matchKey];
+      else if (teamId !== undefined) scheme.winners[matchKey] = teamId;
+      else return;
+
+      for (const key of downstream) delete scheme.winners[key];
+    },
     resetBracket(state) {
       const scheme = activeScheme(state);
       scheme.slots = { ...state.seed.slots };
@@ -203,17 +218,17 @@ const schemeSlice = createSlice({
       };
     },
     setSchedule(state, action) {
-      const { format, roundKey, field, value } = action.payload ?? {};
+      const { format, matchKey, field, value } = action.payload ?? {};
       const key = normalizeFormat(format);
-      if (typeof roundKey !== "string" || !roundKey) return;
+      if (typeof matchKey !== "string" || !matchKey) return;
       if (field !== "date" && field !== "time") return;
 
       state.schedules[key] ??= {};
-      const entry = { ...(state.schedules[key][roundKey] ?? {}) };
+      const entry = { ...(state.schedules[key][matchKey] ?? {}) };
       entry[field] = typeof value === "string" ? value : "";
 
-      if (!entry.date && !entry.time) delete state.schedules[key][roundKey];
-      else state.schedules[key][roundKey] = entry;
+      if (!entry.date && !entry.time) delete state.schedules[key][matchKey];
+      else state.schedules[key][matchKey] = entry;
     },
     mergeSchedules(state, action) {
       const rows = Array.isArray(action.payload?.schedules)
@@ -221,13 +236,13 @@ const schemeSlice = createSlice({
         : [];
 
       for (const row of rows) {
-        if (!isRecord(row) || typeof row.roundKey !== "string" || !row.roundKey) {
+        if (!isRecord(row) || typeof row.matchKey !== "string" || !row.matchKey) {
           continue;
         }
 
         const key = normalizeFormat(row.format);
         state.schedules[key] ??= {};
-        state.schedules[key][row.roundKey] = {
+        state.schedules[key][row.matchKey] = {
           date: typeof row.date === "string" ? row.date : "",
           time: typeof row.time === "string" ? row.time : "",
         };
@@ -244,6 +259,7 @@ export const {
   resetAll: resetAll,
   moveTeam: moveTeam,
   setWinner: setWinner,
+  setWinnerResult: setWinnerResult,
   resetBracket: resetBracket,
   setSchedule: setSchedule,
   mergeSchedules: mergeSchedules,

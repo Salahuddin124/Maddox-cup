@@ -79,7 +79,7 @@ const DRAW_PRINT_STYLES = `
 
 // The ceremony is presentational; this wrapper keeps its draw order, the
 // Double Elimination results, and the round schedule in the database.
-export default function DrawFormat({ teams = [] }) {
+export default function DrawFormat({ teams = [], onRequestScore }) {
   const dispatch = useDispatch();
   const { slots, winners } = useSelector(selectScheme);
 
@@ -119,6 +119,15 @@ export default function DrawFormat({ teams = [] }) {
 
   const saveTournament = useCallback(() => {
     if (!readyRef.current || teams.length !== 8) return;
+
+    // Effects run after a reset with empty snapshots; writing those back would
+    // recreate the row the reset just deleted.
+    const snapshot = snapshotRef.current;
+    const hasContent =
+      (Array.isArray(snapshot.picks) && snapshot.picks.length > 0) ||
+      Object.keys(snapshot.slots ?? {}).length > 0 ||
+      Object.keys(snapshot.winners ?? {}).length > 0;
+    if (!hasContent) return;
 
     clearTimeout(persistTimer.current);
     persistTimer.current = setTimeout(() => {
@@ -265,6 +274,10 @@ export default function DrawFormat({ teams = [] }) {
         method: "DELETE",
         credentials: "same-origin",
       }),
+      fetch("/api/results", {
+        method: "DELETE",
+        credentials: "same-origin",
+      }),
     ])
       .catch(() => {})
       .finally(() => {
@@ -326,7 +339,11 @@ export default function DrawFormat({ teams = [] }) {
 
           {drawComplete ? (
             <div className="draw-bracket" aria-label="Double Elimination bracket">
-              <MatchSchemes teams={teams} embedded />
+              <MatchSchemes
+                teams={teams}
+                embedded
+                onRequestScore={onRequestScore}
+              />
             </div>
           ) : null}
         </>

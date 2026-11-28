@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const FORMATS = new Set(["single", "double", "round-robin", "swiss"]);
-const ROUND_KEY = /^[a-z]+-\d+$/;
+const MATCH_KEY = /^[a-z]+-\d+-\d+$/;
 const DATE_VALUE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_VALUE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -50,11 +50,12 @@ export async function GET(request) {
     await ensureSchema();
 
     const { rows } = await getPool().query(`
-      SELECT format, round_key AS "roundKey",
+      SELECT format, match_key AS "matchKey",
              to_char(scheduled_date, 'YYYY-MM-DD') AS date,
              to_char(scheduled_time, 'HH24:MI') AS time
       FROM match_schedules
-      ORDER BY format, round_key
+      WHERE match_key IS NOT NULL
+      ORDER BY format, match_key
     `);
 
     return noStoreJson({ ok: true, schedules: rows });
@@ -100,14 +101,14 @@ export async function PUT(request) {
   }
 
   const format = payload?.format;
-  const roundKey = payload?.roundKey;
+  const matchKey = payload?.matchKey;
   const date = cleanDate(payload?.date);
   const time = cleanTime(payload?.time);
 
   if (
     !FORMATS.has(format) ||
-    typeof roundKey !== "string" ||
-    !ROUND_KEY.test(roundKey) ||
+    typeof matchKey !== "string" ||
+    !MATCH_KEY.test(matchKey) ||
     date === false ||
     time === false
   ) {
@@ -123,17 +124,17 @@ export async function PUT(request) {
     await getPool().query(
       `
         INSERT INTO match_schedules
-          (format, round_key, scheduled_date, scheduled_time, updated_at)
+          (format, match_key, scheduled_date, scheduled_time, updated_at)
         VALUES ($1, $2, $3::date, $4::time, now())
-        ON CONFLICT (format, round_key) DO UPDATE
+        ON CONFLICT (format, match_key) DO UPDATE
         SET scheduled_date = EXCLUDED.scheduled_date,
             scheduled_time = EXCLUDED.scheduled_time,
             updated_at = now()
       `,
-      [format, roundKey, date, time],
+      [format, matchKey, date, time],
     );
 
-    return noStoreJson({ ok: true, format, roundKey, date, time });
+    return noStoreJson({ ok: true, format, matchKey, date, time });
   } catch (error) {
     console.error("Failed to save match schedule:", error);
 

@@ -17,11 +17,9 @@ export default function DoubleElimination({
   championPlayers = [],
   championAverage = 0,
   onPickWinner,
+  onRequestScore,
   onDragStart,
   onDrop,
-  schedule,
-  onScheduleChange,
-  showSchedule = false,
 }) {
   const boardRef = useRef(null);
 
@@ -31,11 +29,9 @@ export default function DoubleElimination({
     winners,
     eliminated,
     onPickWinner,
+    onRequestScore,
     onDragStart,
     onDrop,
-    schedule,
-    onScheduleChange,
-    showSchedule,
   };
 
   const upper = sections.find(
